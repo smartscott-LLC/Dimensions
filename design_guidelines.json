@@ -1,0 +1,149 @@
+{
+  "project_name": "14D Polytope Mathematical Constraint Telemetry Dashboard",
+  "theme": "dark",
+  "archetype": "ARCHETYPE 4: SWISS & HIGH-CONTRAST + ARCHETYPE 7: ELECTRIC TACTICAL PRECISION",
+  "entry_surfaces": {
+    "/": "High-density command dashboard — executive telemetry headers, live 14D polytope projection canvas, and streaming constraint violation feed"
+  },
+  "colors": {
+    "palette": {
+      "prussian_blue": "#002147",
+      "dark_khaki": "#514B23",
+      "metallic_gold": "#D4AF37",
+      "slate_indigo": "#495AAD",
+      "background_void": "#030712",
+      "card_surface": "#090F1E",
+      "card_border": "#1E293B",
+      "emerald_pass": "#10B981",
+      "rose_violation": "#EF4444",
+      "amber_correction": "#F59E0B"
+    },
+    "surfaces": [
+      {
+        "name": "page",
+        "kind": "solid",
+        "bg": "#030712",
+        "on_bg": "#F8FAFC",
+        "on_bg_muted": "#94A3B8"
+      },
+      {
+        "name": "panel",
+        "kind": "solid",
+        "bg": "#090F1E",
+        "on_bg": "#F8FAFC",
+        "on_bg_muted": "#94A3B8"
+      },
+      {
+        "name": "card_highlight",
+        "kind": "solid",
+        "bg": "#002147",
+        "on_bg": "#FFFFFF",
+        "on_bg_muted": "#CBD5E1"
+      },
+      {
+        "name": "tactical_header",
+        "kind": "glass",
+        "contrast_against": "#030712",
+        "guarantee": "backdrop-blur-xl bg-[#002147]/80 border-b border-[#D4AF37]/30",
+        "on_bg": "#FFFFFF",
+        "on_bg_muted": "#CBD5E1",
+        "roles": {
+          "link": "#D4AF37",
+          "error": "#EF4444",
+          "success": "#10B981"
+        }
+      },
+      {
+        "name": "gold_badge",
+        "kind": "solid",
+        "bg": "#D4AF37",
+        "on_bg": "#002147",
+        "on_bg_muted": "#332600"
+      },
+      {
+        "name": "slate_badge",
+        "kind": "solid",
+        "bg": "#495AAD",
+        "on_bg": "#FFFFFF",
+        "on_bg_muted": "#E0E7FF"
+      }
+    ],
+    "accent": "#D4AF37",
+    "on_accent": "#002147"
+  },
+  "typography": {
+    "font_family_heading": "JetBrains Mono Variable",
+    "font_family_body": "IBM Plex Sans",
+    "font_family_mono": "IBM Plex Mono",
+    "imports": [
+      "@import \"@fontsource-variable/jetbrains-mono\";",
+      "@import \"@fontsource/ibm-plex-sans\";",
+      "@import \"@fontsource/ibm-plex-mono\";"
+    ],
+    "scale_px": {
+      "display": 48,
+      "h1": 36,
+      "h2": 28,
+      "h3": 20,
+      "body": 15,
+      "caption": 13
+    }
+  },
+  "grids": {
+    "mode": "MODE B: High Density Dashboard Grid",
+    "dashboard_layout": "grid grid-cols-1 md:grid-cols-4 lg:grid-cols-12 gap-4 p-6",
+    "spans": {
+      "kpi_bar": "col-span-12 grid grid-cols-2 md:grid-cols-5 gap-4",
+      "polytope_viz": "col-span-12 lg:col-span-8 row-span-2",
+      "live_stream": "col-span-12 lg:col-span-4 row-span-2",
+      "constraint_editor": "col-span-12 lg:col-span-7",
+      "telemetry_charts": "col-span-12 lg:col-span-5",
+      "audit_trail": "col-span-12"
+    }
+  },
+  "layouts": {
+    "header": "Fixed top navigation bar with Prussian Blue background (#002147), Metallic Gold accents (#D4AF37), status indicators, and simulator stream toggle.",
+    "sidebar_or_tabs": "Tabbed view switcher for Overview KPI, Live 14D Stream, Polytope Canvas 2D Slice, Constraint Editor (Ax <= b), Event Log, Audit Trail.",
+    "card_style": "Cardless or sharp 1px slate-indigo stroke cards with dark void background (#090F1E), inset spacing p-5."
+  },
+  "motion": {
+    "library": "motion/react",
+    "rules": [
+      "Respect prefers-reduced-motion using useReducedMotion() hook",
+      "Live vector point projections move smoothly across 2D plane with spring transition",
+      "Violations flash gentle gold/red border highlight for 600ms",
+      "Hover transitions on table rows and action triggers set to 150ms ease-out"
+    ]
+  },
+  "accessibility": {
+    "rules": [
+      "Minimum 4.5:1 text contrast for all body and muted text tokens against respective surface backgrounds",
+      "High visibility focus indicators with 2px ring ring-offset-2 ring-[#D4AF37]",
+      "Interactive non-text glyphs have explicit aria-label and data-testid attributes",
+      "Data charts use distinct stroke dash patterns alongside color for high contrast accessibility"
+    ]
+  },
+  "media": {
+    "image_urls": {
+      "quantum_nodes": "https://images.unsplash.com/photo-1664526937033-fe2c11f1be25?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "digital_network": "https://images.pexels.com/photos/8386440/pexels-photo-8386440.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+    }
+  },
+  "component_path": "/app/frontend/src/components/",
+  "instructions_to_main_agent": [
+    "Use Tailwind v4 CSS variables defined in frontend/src/index.css along with fontsource imports.",
+    "Implement the full 14D Polytope Mathematical Framework: Convex polytope P = {x in R^14 : Ax <= b}, residual vector r = Ax - b, max residual max(r).",
+    "Include a live synthetic vector stream simulator with start/pause controls, latency injection, and violation probability toggles.",
+    "Ensure all interactive buttons, inputs, canvas nodes, and tab triggers carry explicit data-testid attributes (e.g., data-testid='start-simulator-btn').",
+    "Use standard recharts for telemetry histograms and multi-axis performance graphs.",
+    "Provide interactive 2D slice projection canvas where user selects dimension X (e.g. Dim 1: Toxicity) vs dimension Y (e.g. Dim 4: Concentration), showing linear hyperplane boundaries and projected state points.",
+    "Provide editable constraint matrix editor (A matrix 14 rows x 14 cols, b threshold vector 14 elements) with preset safety profiles ('Biochemical Safeguard Strict', 'Clinical Trial Safety', 'Permissive Test Mode').",
+    "Render clear status badges using Prussian Blue, Dark Khaki, Metallic Gold, and Slate Indigo."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": {
+    "anti_slop": "Do not default to generic centered cards. Use sharp tactical borders, dense grid spacing, high-contrast monospace metadata, and live streaming mathematical telemetry.",
+    "contrast": "Always maintain explicit background and foreground pairs as listed in colors.surfaces.",
+    "spacing": "Maintain crisp, dense inner padding p-4 or p-6 with direct clear alignment.",
+    "testing_readiness": "Every action button, tab item, filter control, modal trigger, and data row must have unambiguous data-testid attributes."
+  }
+}
