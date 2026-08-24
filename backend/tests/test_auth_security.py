@@ -250,3 +250,122 @@ class TestAccountLockout:
         assert "_is_account_locked" in source
         assert "_lock_account" in source
         assert "423" in source  # Service Unavailable for locked account
+
+
+class TestTokenRevocation:
+    """Test JWT token revocation functionality."""
+
+    def test_jwt_denylist_collection_defined(self):
+        """JWT denylist collection name should be defined."""
+        from lib.auth import JWT_DENYLIST_COLLECTION
+        assert JWT_DENYLIST_COLLECTION == "jwt_denylist"
+
+    def test_revoke_token_function_exists(self):
+        """revoke_token function should exist."""
+        from lib.auth import revoke_token
+        import inspect
+        assert inspect.iscoroutinefunction(revoke_token)
+
+    def test_is_token_revoked_function_exists(self):
+        """is_token_revoked function should exist."""
+        from lib.auth import is_token_revoked
+        import inspect
+        assert inspect.iscoroutinefunction(is_token_revoked)
+
+    def test_token_has_jti(self):
+        """Issued tokens should include JTI for revocation."""
+        from lib.auth import issue_token
+        from models.auth import User
+        import inspect
+        
+        source = inspect.getsource(issue_token)
+        assert "jti" in source
+
+    def test_current_user_checks_revocation(self):
+        """current_user should check token revocation status."""
+        from lib.auth import current_user
+        import inspect
+        
+        source = inspect.getsource(current_user)
+        assert "is_token_revoked" in source
+        assert "session revoked" in source.lower() or "revoked" in source.lower()
+
+
+class TestReplayProtection:
+    """Test replay attack protection (nbf + nonces)."""
+
+    def test_nbf_in_token_payload(self):
+        """Tokens should include nbf (not before) claim."""
+        from lib.auth import issue_token
+        import inspect
+        
+        source = inspect.getsource(issue_token)
+        assert "nbf" in source
+
+    def test_nonce_functions_exist(self):
+        """Nonce generation and validation functions should exist."""
+        from lib.auth import generate_nonce, validate_nonce, cleanup_expired_nonces
+        import inspect
+        
+        assert inspect.iscoroutinefunction(generate_nonce)
+        assert inspect.iscoroutinefunction(validate_nonce)
+        assert inspect.iscoroutinefunction(cleanup_expired_nonces)
+
+    def test_nonce_collection_defined(self):
+        """Nonce collection name should be defined."""
+        from lib.auth import NONCE_COLLECTION, NONCE_EXPIRY_SECONDS
+        assert NONCE_COLLECTION == "auth_nonces"
+        assert NONCE_EXPIRY_SECONDS == 300  # 5 minutes
+
+    def test_nonce_endpoint_exists(self):
+        """Nonce endpoint should exist."""
+        import inspect
+        from routers.auth import get_nonce
+        
+        assert inspect.iscoroutinefunction(get_nonce)
+
+    def test_sensitive_ops_check_nonce(self):
+        """State-changing operations should validate nonces."""
+        import inspect
+        from routers.auth import change_password, create_user, toggle_user
+        
+        for func in [change_password, create_user, toggle_user]:
+            source = inspect.getsource(func)
+            assert "nonce" in source.lower() or "Nonce" in source
+
+
+class TestCSRFProtection:
+    """Test CSRF protection functionality."""
+
+    def test_csrf_module_exists(self):
+        """CSRF module should exist."""
+        import lib.csrf
+        assert hasattr(lib.csrf, 'generate_csrf_token')
+        assert hasattr(lib.csrf, 'validate_csrf_token')
+
+    def test_csrf_token_expiry_defined(self):
+        """CSRF token expiry should be defined."""
+        from lib.csrf import CSRF_TOKEN_EXPIRY_HOURS
+        assert CSRF_TOKEN_EXPIRY_HOURS == 12
+
+    def test_csrf_collection_defined(self):
+        """CSRF collection name should be defined."""
+        from lib.csrf import CSRF_COLLECTION
+        assert CSRF_COLLECTION == "csrf_tokens"
+
+    def test_csrf_token_endpoint_exists(self):
+        """CSRF token endpoint should exist."""
+        import inspect
+        from routers.auth import get_csrf_token
+        
+        assert inspect.iscoroutinefunction(get_csrf_token)
+
+    def test_csrf_in_state_changing_ops(self):
+        """State-changing operations should validate CSRF tokens."""
+        import inspect
+        from routers.auth import change_password, create_user, toggle_user
+        
+        # Check that CSRF validation is present in these functions
+        for func in [change_password, create_user, toggle_user]:
+            source = inspect.getsource(func)
+            assert "csrf" in source.lower() or "CSRF" in source

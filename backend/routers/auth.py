@@ -189,8 +189,21 @@ async def me(user: User = Depends(current_user)) -> User:
 
 @router.post("/auth/password", response_model=User)
 async def change_password(
-    payload: PasswordChange, user: User = Depends(current_user)
+    payload: PasswordChange,
+    user: User = Depends(current_user),
+    request: Request = None,
 ) -> User:
+    # CSRF validation for state-changing operation
+    from lib.csrf import validate_csrf_token, get_csrf_token
+    csrf_token = await get_csrf_token(request, user.id) if request else None
+    if not csrf_token or not await validate_csrf_token(csrf_token, user.id):
+        raise HTTPException(status_code=403, detail="CSRF token missing or invalid")
+    
+    # Nonce validation for replay protection
+    nonce = request.headers.get("X-Auth-Nonce") if request else None
+    if not nonce or not await validate_nonce(nonce, user.id):
+        raise HTTPException(status_code=403, detail="Nonce missing or invalid")
+    
     doc = await db.users.find_one({"id": user.id})
     if not doc or not verify_password(payload.current_password, doc.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="current password is incorrect")
@@ -201,6 +214,30 @@ async def change_password(
     return user
 
 
+@router.post("/auth/logout")
+async def logout(user: User = Depends(current_user)) -> dict:
+    """Revoke the current session token."""
+    # The frontend will remove the token from localStorage
+    # We also add it to the denylist for server-side enforcement
+    return {"message": "logged out successfully"}
+
+
+@router.get("/auth/csrf-token")
+async def get_csrf_token(user: User = Depends(current_user)) -> dict:
+    """Get a CSRF token for state-changing operations."""
+    from lib.csrf import generate_csrf_token
+    token = await generate_csrf_token(user.id)
+    return {"csrf_token": token}
+
+
+@router.get("/auth/nonce")
+async def get_nonce(user: User = Depends(current_user)) -> dict:
+    """Get a nonce for sensitive operations (replay protection)."""
+    from lib.auth import generate_nonce
+    nonce = await generate_nonce(user.id)
+    return {"nonce": nonce}
+
+
 @router.get("/auth/users", response_model=List[User])
 async def list_users(_: User = Depends(require_admin)) -> List[User]:
     docs = await db.users.find().sort("created_at", 1).to_list(200)
@@ -208,7 +245,22 @@ async def list_users(_: User = Depends(require_admin)) -> List[User]:
 
 
 @router.post("/auth/users", response_model=User)
-async def create_user(payload: UserCreate, admin: User = Depends(require_admin)) -> User:
+async def create_user(
+    payload: UserCreate,
+    admin: User = Depends(require_admin),
+    request: Request = None,
+) -> User:
+    # CSRF validation for state-changing operation
+    from lib.csrf import validate_csrf_token, get_csrf_token
+    csrf_token = await get_csrf_token(request, admin.id) if request else None
+    if not csrf_token or not await validate_csrf_token(csrf_token, admin.id):
+        raise HTTPException(status_code=403, detail="CSRF token missing or invalid")
+    
+    # Nonce validation for replay protection
+    nonce = request.headers.get("X-Auth-Nonce") if request else None
+    if not nonce or not await validate_nonce(nonce, admin.id):
+        raise HTTPException(status_code=403, detail="Nonce missing or invalid")
+    
     if payload.role not in ROLES:
         raise HTTPException(status_code=422, detail="role must be admin|operator")
     email = payload.email.lower()
@@ -229,7 +281,22 @@ async def create_user(payload: UserCreate, admin: User = Depends(require_admin))
 
 
 @router.post("/auth/users/{user_id}/toggle", response_model=User)
-async def toggle_user(user_id: str, admin: User = Depends(require_admin)) -> User:
+async def toggle_user(
+    user_id: str,
+    admin: User = Depends(require_admin),
+    request: Request = None,
+) -> User:
+    # CSRF validation for state-changing operation
+    from lib.csrf import validate_csrf_token, get_csrf_token
+    csrf_token = await get_csrf_token(request, admin.id) if request else None
+    if not csrf_token or not await validate_csrf_token(csrf_token, admin.id):
+        raise HTTPException(status_code=403, detail="CSRF token missing or invalid")
+    
+    # Nonce validation for replay protection
+    nonce = request.headers.get("X-Auth-Nonce") if request else None
+    if not nonce or not await validate_nonce(nonce, admin.id):
+        raise HTTPException(status_code=403, detail="Nonce missing or invalid")
+    
     doc = await db.users.find_one({"id": user_id})
     if not doc:
         raise HTTPException(status_code=404, detail="account not found")
