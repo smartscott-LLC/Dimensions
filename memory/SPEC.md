@@ -52,8 +52,7 @@ toward the origin is WRONG for any polytope with lower bounds, because 0 need no
   `inherit_enforcement_mode: true`). UI: **Gate** tab (`components/GatePanel.tsx`).
 
 ## Coaching chat (`routers/chat.py`, `components/ChatCoach.tsx`)
-Real LLM turns gated before release. `anthropic/claude-sonnet-4-5-20250929` via
-`emergentintegrations.llm.chat.LlmChat` with `EMERGENT_LLM_KEY` in backend/.env; history is
+Real LLM turns gated before release. `agnes-2.5-flash` via the OpenAI SDK with `LLM_API_KEY` and optional `LLM_API_BASE`/`LLM_MODEL` in backend/.env; history is
 owned by Mongo and replayed into the prompt each turn, and the system prompt carries live
 engine facts (profile name, facet count, axis labels, mode semantics) so the coach cannot
 invent engine behaviour.

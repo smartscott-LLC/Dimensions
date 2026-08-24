@@ -32,7 +32,7 @@ from routers.containment import _active_profile, _profile_by_id, _resolve_client
 
 router = APIRouter()
 
-MODEL = "claude-sonnet-4-5-20250929"
+MODEL = os.environ.get("MODEL_NAME", "agnes-2.5-flash")
 HISTORY_TURNS = 8
 
 SYSTEM_PROMPT = (
@@ -221,11 +221,14 @@ async def _generate(
     mode: str,
     max_reflections: int,
 ) -> str:
-    key = os.environ.get("EMERGENT_LLM_KEY")
+    key = os.environ.get("MODEL_API_KEY")
     if not key:
-        raise HTTPException(status_code=503, detail="EMERGENT_LLM_KEY is not configured")
+        raise HTTPException(status_code=503, detail="MODEL_API_KEY is not configured")
 
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from openai import AsyncOpenAI
+
+    base_url = os.environ.get("MODEL_API_URL", "https://api.openai.com/v1")
+    client = AsyncOpenAI(api_key=key, base_url=base_url)
 
     facts = (
         f"\n\nLIVE ENGINE FACTS (authoritative — never contradict these):\n"
@@ -249,14 +252,18 @@ async def _generate(
         transcript += f"Operator: {turn.user_text}\nYou: {released}\n"
     prompt = f"{transcript}Operator: {text}" if transcript else text
 
-    chat = LlmChat(
-        api_key=key, session_id=session_id, system_message=SYSTEM_PROMPT + facts
-    ).with_model("anthropic", MODEL)
     try:
-        reply = await chat.send_message(UserMessage(text=prompt))
+        response = await client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT + facts},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        reply = (response.choices[0].message.content or "").strip()
     except Exception as exc:  # provider/network failure
         raise HTTPException(status_code=502, detail=f"model call failed: {exc}") from exc
-    return (reply or "").strip() or "(the model returned an empty reply)"
+    return reply or "(the model returned an empty reply)"
 
 
 @router.post("/chat/sessions/{session_id}/message", response_model=ChatTurn)

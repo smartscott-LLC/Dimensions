@@ -41,7 +41,7 @@ filename and `quality` is JPEG-only; `page.goto` needs an absolute
 - **Frontend charts**: `recharts` (with `react-is` pinned to the React 19 line).
 - **Backend** (`backend/requirements.txt`): `fastapi`, `uvicorn`, `motor`,
   `pymongo`, `pydantic` v2, `python-dotenv`, `httpx`, `requests`, `pandas`,
-  `numpy`, `emergentintegrations`, `boto3`, `typer`, `pytest` +
+  `numpy`, `openai`, `boto3`, `typer`, `pytest` +
   `pytest-asyncio`/`xdist`; auth and uploads are covered too — `pyjwt`,
   `python-jose`, `passlib`, `cryptography`, `email-validator`,
   `python-multipart`.
@@ -69,7 +69,7 @@ This list is why you never need to read `package.json` or list `node_modules`.
 | `frontend/src/components/ui/` | shadcn `base-nova` on **@base-ui/react** (index in §11) |
 | `frontend/src/index.css` | Tailwind v4 entry + theme tokens (no `tailwind.config.js`) |
 | `memory/spec.md`, `memory/test_credentials.md` | write seed facts + credentials here before delegating — the testing subagent reads them first |
-| `backend/pytest.ini`, `backend/tests/`, `tests/` | pytest + Playwright scaffolding, pre-configured — don't edit or recreate; browser checks land in `.emergent/scripts/checks/` |
+| `backend/pytest.ini`, `backend/tests/`, `tests/` | pytest + Playwright scaffolding, pre-configured — don't edit or recreate |
 ## 4. The typed-fetch boundary
 
 Nothing infers across Python↔TypeScript. Each endpoint has **two** declarations
@@ -157,7 +157,7 @@ stale content as live after the backend goes away.
 
 | Flag / fact | Implication |
 |---|---|
-| frontend `tsc --noEmit` checks **0 files** | root tsconfig is `"files": []` + project references — the working command is `yarn typecheck` from `frontend/` |
+| frontend `tsc --noEmit` checks **0 files** | root tsconfig is `"files": []` + project references — the working command is `pnpm typecheck` from `frontend/` |
 | frontend `noUnusedLocals` | an unused import is a build error, not a warning |
 | frontend `verbatimModuleSyntax` | types must use `import type { X }` |
 | frontend `erasableSyntaxOnly` | no `enum`, no constructor parameter properties (declare fields, assign in the body) |
@@ -201,14 +201,9 @@ and the hex values in `:root` + `.dark`; leave the other aliases and
 ## 9. Verify before you finish
 
 - **Typecheck once, as a named gate step** when the build is complete:
-  `cd /app/frontend && yarn typecheck`, and
+  `cd /app/frontend && pnpm typecheck`, and
   `cd /app/backend && python -c 'import server'` for backend import sanity.
-- **Screenshots** (`mcp_screenshot_tool_ts`): `path` must be a **bare filename**
-  (`home.png`) — a directory prefix is written but never returned, landing under
-  `/root/.emergent/automation_output/<ts>/`. `quality` is **JPEG-only**: passing
-  it with a `.png` path fails the whole browser run (`options.quality is
-  unsupported for the png screenshots`). Set the viewport before capturing; the
-  image returns inline, so never `find` it on disk.
+- **Screenshots**: `path` must be a **bare filename** (`home.png`) — a directory prefix is written but never returned. `quality` is **JPEG-only**: passing it with a `.png` path fails the whole browser run (`options.quality is unsupported for the png screenshots`). Set the viewport before capturing; the image returns inline, so never `find` it on disk.
 - **Browser scripts**: every `page.goto` needs an absolute
   `http://localhost:3000/...` URL — a relative `'/'` throws `Cannot navigate to
   invalid URL`.

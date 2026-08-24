@@ -2,14 +2,9 @@ import path from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { visualEdits } from "@emergentbase/visual-edits/vite";
 
 // Supervisor exports DISABLE_HOT_RELOAD=true when the platform sets ENABLE_RELOAD=false.
 const hotReloadDisabled = process.env.DISABLE_HOT_RELOAD === "true";
-
-// Visual Edits (x-* JSX tagging, overlay, /edit-file endpoint) is dev-server-only by
-// default (apply: serve); escape hatch mirrors DISABLE_HOT_RELOAD.
-const visualEditsDisabled = process.env.DISABLE_VISUAL_EDITS === "true";
 
 // Pod inotify quota is node-shared and routinely exhausted; native fs.watch EMFILEs at
 // boot. Polling is the load-bearing default (set before Vite evaluates the config).
@@ -22,7 +17,6 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    ...(visualEditsDisabled ? [] : [visualEdits()]),
   ],
   resolve: {
     alias: {

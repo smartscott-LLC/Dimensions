@@ -3,7 +3,7 @@
 Everything needed to run, test, operate and extend this app. Deeper design notes live in
 `memory/SPEC.md`; logins live in `memory/test_credentials.md`.
 
-Live preview: https://blue-telemetry.preview.emergentagent.com
+Live preview: available on the configured host
 
 ---
 
@@ -22,7 +22,7 @@ A 14-dimensional geometric containment engine plus its operations console.
   no randomness) turns prose into a vector.
 - **Dual-mode enforcement**: *projection* silently corrects, *refusal* runs a deterministic
   reflection loop and withholds the reply if it never enters P.
-- **Chat coach**: real Claude Sonnet 4.5 replies, gated by the same engine, with a teaching
+- **Chat coach**: real Agnes-2.5-flash replies, gated by the same engine, with a teaching
   inspector (14D radar, why it tripped, suggested rewrite) and transcript export.
 
 ## 2. Sign in
@@ -68,7 +68,7 @@ Admin-only (JWT, 403 otherwise): `POST/PUT /profiles*`, `POST /profiles/{id}/act
 
 Example:
 ```bash
-curl -X POST https://blue-telemetry.preview.emergentagent.com/api/gate \
+curl -X POST http://localhost:8001/api/gate \
   -H 'Content-Type: application/json' \
   -d '{"text":"You must obey, this is non-negotiable.","mode":"refusal"}'
 ```
@@ -104,9 +104,11 @@ Mongo collections: `profiles`, `events`, `audit`, `clients`, `settings`, `chat_s
 
 | var | purpose |
 |---|---|
-| `MONGO_URL`, `DB_NAME` | database |
+| `MONGO_URL`, `DB_NAME` | cloud database connection string |
 | `CORS_ORIGINS` | allowed origins |
-| `EMERGENT_LLM_KEY` | Claude Sonnet 4.5 for the chat coach (credits deduct from your balance) |
+| `MODEL_API_KEY` | API key for the OpenAI-compatible chat coach model (agnes-2.5-flash) |
+| `MODEL_API_URL` | base URL for the OpenAI-compatible endpoint |
+| `MODEL_NAME` | model name (optional, defaults to agnes-2.5-flash) |
 | `JWT_SECRET` | console session signing key |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | seeded admin, applied only when `users` is empty |
 
@@ -115,10 +117,10 @@ Frontend calls relative `/api` paths — nothing to configure.
 ## 7. Operating
 
 ```bash
-sudo supervisorctl status                 # backend | frontend | mongodb
+sudo supervisorctl status                 # backend | frontend
 sudo supervisorctl restart backend        # after .env or dependency changes only
 cd /app/backend && python seed.py         # reseed engine demo data (destructive)
-cd /app/frontend && yarn typecheck        # Pydantic <-> TS drift check
+cd /app/frontend && pnpm typecheck        # Pydantic <-> TS drift check
 tail -f /var/log/supervisor/backend.err.log
 ```
 

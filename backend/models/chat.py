@@ -28,7 +28,7 @@ class ChatSession(BaseModel):
     profile_id: str
     profile_name: str
     mode: Optional[str] = None  # None = inherit client/engine mode
-    model: str = "claude-sonnet-4-5-20250929"
+    model: str = "agnes-2.5-flash"
     turns: int = 0
     withheld: int = 0
     created_at: datetime = Field(default_factory=_now)

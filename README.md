@@ -2,8 +2,7 @@
 
 Minimal split backend/frontend starter: **FastAPI + MongoDB** behind a
 **Vite + React 19 + TypeScript** frontend, joined by a small typed fetch layer
-over `/api`. This is a bare skeleton — no app features are implemented. Build on
-top of it.
+over `/api`.
 
 ## Layout
 
@@ -21,7 +20,7 @@ below); to run them by hand from two terminals instead:
 
 ```bash
 cd backend && uvicorn server:app --host 0.0.0.0 --port 8001 --reload   # http://localhost:8001
-cd frontend && yarn dev                                                # http://localhost:3000
+cd frontend && pnpm dev                                                # http://localhost:3000
 ```
 
 ## The `/api` proxy convention
@@ -69,11 +68,12 @@ FastAPI, async throughout. `python` is the app venv interpreter
 - **Ids**: documents use a string `id` (`uuid4`) field, not Mongo's `ObjectId`
   — `ObjectId` is not JSON-serializable and leaks into response bodies. Keep the
   `uuid4` default-factory pattern from `StatusCheck`.
-- **Config**: `backend/.env` — `MONGO_URL` (connection string), `DB_NAME`
-  (database name), `CORS_ORIGINS`. `server.py` loads it with `python-dotenv`
-  above its local imports, and `lib/db.py` self-loads it so standalone scripts
-  inherit it too. The pod runs `mongod` locally, so `MONGO_URL` points at
-  `localhost`. Add new secrets/config here; read them with `os.environ`.
+- **Config**: `backend/.env` — `MONGO_URL` (cloud connection string), `DB_NAME`
+  (database name), `CORS_ORIGINS`, `MODEL_API_KEY`, `MODEL_API_URL`, `MODEL_NAME`,
+  `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`.
+  `server.py` loads it with `python-dotenv` above its local imports, and
+  `lib/db.py` self-loads it so standalone scripts inherit it too. Add new
+  secrets/config here; read them with `os.environ`.
 - **Dates**: `backend/lib/dates.py` — `today_iso(tz=None)`. The pod clock is
   UTC; anchor "today" server-side with this, never with client-side date math.
 - **Interactive check**: `cd /app/backend && python -c 'import server'` catches
@@ -115,12 +115,12 @@ FastAPI, async throughout. `python` is the app venv interpreter
 pod:
 
 ```bash
-cd frontend && yarn typecheck
+cd frontend && pnpm typecheck
 ```
 
 — plain `tsc --noEmit` run from `frontend/` checks ZERO files (root tsconfig uses
 project references with `"files": []`) and exits 0 even with type errors. Always
-use `-b` for the frontend. Lint with `cd frontend && yarn lint` (oxlint).
+use `-b` for the frontend. Lint with `cd frontend && pnpm lint` (oxlint).
 
 ## Data fetching
 
@@ -132,7 +132,7 @@ fetch-in-`useEffect`.
 
 When the build is complete, run tier 1 once, all in the same turn: a curl smoke
 over the key `/api` endpoints (assert status AND a response field, plus one
-negative case), `cd frontend && yarn typecheck`, and ONE happy-path browser pass
+negative case), `cd frontend && pnpm typecheck`, and ONE happy-path browser pass
 through the core user journey. Clean on all three → finish; any failure is a real
 bug — fix it, re-run the failed check, and escalate to the testing subagent.
 No routine typecheck/lint/smoke passes during the build — tier 1 runs exactly once.
@@ -170,10 +170,10 @@ not apply to it.
 
 ## Pod conventions
 
-This template runs under supervisord in the Emergent agent pod — supersedes any
+This template runs under supervisord — supersedes any
 local-run instructions above.
 
-- Backend, frontend, and `mongod` are each a supervisor program. After code or
+- Backend, frontend are each a supervisor program. After code or
   config changes, restart and wait for readiness:
 
   ```bash
@@ -187,8 +187,8 @@ local-run instructions above.
   `frontend.err.log`.
 - App in a browser: the pod's preview URL (frontend, port `3000`). Backend API
   directly at port `8001`.
-- `mongod` runs locally in the pod (`--bind_ip_all`); `MONGO_URL` in
-  `backend/.env` points at `localhost`, no separate Mongo container.
+- Cloud MongoDB: `MONGO_URL` in
+  `backend/.env` points at the cloud MongoDB instance (Atlas or similar).
 - Both dev servers hot-reload on file edits (uvicorn `--reload` for the backend,
   Vite HMR for the frontend); no rebuild step needed for normal iteration. A
   restart is still needed after changing `.env`, `requirements.txt`, or
