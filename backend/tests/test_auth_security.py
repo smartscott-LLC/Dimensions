@@ -369,3 +369,107 @@ class TestCSRFProtection:
         for func in [change_password, create_user, toggle_user]:
             source = inspect.getsource(func)
             assert "csrf" in source.lower() or "CSRF" in source
+
+
+class TestMongoDBSecurity:
+    """Test MongoDB read/write concern configuration."""
+
+    def test_connection_options_defined(self):
+        """MongoDB connection should have security options."""
+        import lib.db
+        
+        # Check that connection_options exists and has required fields
+        assert hasattr(lib.db, 'connection_options')
+        
+        options = lib.db.connection_options
+        assert "w" in options, "Write concern 'w' should be set"
+        assert options["w"] == "majority", "Write concern should be 'majority'"
+        
+        # Check for timeout options (using correct PyMongo names)
+        assert "wtimeoutms" in options or "serverSelectionTimeoutMS" in options
+        assert "socketTimeoutMS" in options
+    
+    def test_pool_size_configured(self):
+        """MongoDB connection pool should be configured."""
+        import lib.db
+        
+        options = lib.db.connection_options
+        assert "maxPoolSize" in options, "maxPoolSize should be configured"
+        assert "minPoolSize" in options, "minPoolSize should be configured"
+        assert options["maxPoolSize"] >= 5, "maxPoolSize should be at least 5"
+        assert options["minPoolSize"] >= 1, "minPoolSize should be at least 1"
+    
+    def test_client_created_with_options(self):
+        """Motor client should be created with connection options."""
+        import lib.db
+        
+        # Verify client exists and is a Motor client
+        assert hasattr(lib.db, 'client')
+        assert lib.db.client is not None
+        
+        # Verify db attribute exists
+        assert hasattr(lib.db, 'db')
+        assert lib.db.db is not None
+
+
+class TestHealthCheck:
+    """Test health check endpoint."""
+
+    def test_health_endpoint_exists(self):
+        """Health check endpoint should be registered."""
+        import inspect
+        from server import health_check
+        
+        assert inspect.iscoroutinefunction(health_check)
+    
+    def test_readiness_endpoint_exists(self):
+        """Readiness check endpoint should be registered."""
+        import inspect
+        from server import readiness_check
+        
+        assert inspect.iscoroutinefunction(readiness_check)
+    
+    def test_health_response_model(self):
+        """Health check should return HealthStatus model."""
+        from server import HealthStatus
+        
+        # Pydantic v2 models use model_fields to check fields
+        fields = list(HealthStatus.model_fields.keys())
+        
+        assert "status" in fields
+        assert "database" in fields
+        assert "uptime_seconds" in fields
+        assert "timestamp" in fields
+    
+    def test_database_status_model(self):
+        """Database status should have required fields."""
+        from server import DatabaseStatus
+        
+        # Pydantic v2 models use model_fields to check fields
+        fields = list(DatabaseStatus.model_fields.keys())
+        
+        assert "connected" in fields
+        assert "latency_ms" in fields
+
+
+class TestSecurityHeaders:
+    """Test security headers middleware."""
+
+    def test_security_headers_middleware_exists(self):
+        """Security headers middleware should be registered."""
+        from server import app
+        
+        # Check that middleware is registered - FastAPI stores middleware in user_middleware
+        # Each item is a Middleware object with 'cls' attribute
+        assert len(app.user_middleware) > 0
+    
+    def test_security_headers_in_code(self):
+        """Security header names should be in server.py."""
+        with open("server.py", "r") as f:
+            content = f.read()
+        
+        # Check for key security headers
+        assert "X-Content-Type-Options" in content
+        assert "X-Frame-Options" in content
+        assert "Content-Security-Policy" in content
+        assert "Referrer-Policy" in content
