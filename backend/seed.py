@@ -240,14 +240,8 @@ def build_event(
     )
 
 
-DEMO_KEYS = {
-    "gpt-5.2-triage": "pk_gpt52triage_9f4c17ab2e5d8103",
-    "claude-bio-assist": "pk_claudebio_5a7e2d94c1f6b038",
-    "internal-rag": "pk_internalrag_3c81f6ae72d940b5",
-}
-
-
 def demo_clients(now: datetime) -> list[Client]:
+    """Generate demo clients with RANDOM keys (never hardcoded)."""
     specs = [
         (
             "gpt-5.2-triage",
@@ -270,14 +264,15 @@ def demo_clients(now: datetime) -> list[Client]:
     ]
     out = []
     for idx, (name, desc, pid, pname) in enumerate(specs):
-        raw = DEMO_KEYS[name]
+        # Generate RANDOM key - never hardcoded
+        raw, prefix, hashed = mint_key()
         out.append(
             Client(
                 id=f"client-{name}",
                 name=name,
                 description=desc,
-                key_prefix=raw[:11],
-                key_hash=hash_key(raw),
+                key_prefix=prefix,
+                key_hash=hashed,
                 profile_id=pid,
                 profile_name=pname,
                 # internal-rag ships with a tighter per-client override to demonstrate

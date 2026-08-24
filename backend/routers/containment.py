@@ -152,6 +152,11 @@ async def _resolve_client(api_key: Optional[str]) -> Optional[Client]:
             )
         return None
 
+    # Validate API key format: must be pk_ followed by 40 hex chars
+    import re
+    if not re.match(r'^pk_[0-9a-f]{40}$', api_key):
+        raise HTTPException(status_code=401, detail="invalid API key format")
+
     doc = await db.clients.find_one({"key_hash": hash_key(api_key)})
     if not doc:
         raise HTTPException(status_code=401, detail="invalid API key")

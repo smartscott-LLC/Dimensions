@@ -220,3 +220,33 @@ class TestCodeQuality:
         # Should be reasonable values
         assert MAX_LOGIN_ATTEMPTS > 0
         assert LOGIN_LOCKOUT_MINUTES > 0
+
+
+class TestAccountLockout:
+    """Test account-level lockout functionality."""
+
+    def test_account_lockout_constants(self):
+        """Account lockout constants should be defined."""
+        from routers.auth import MAX_ACCOUNT_FAILURES, ACCOUNT_LOCKOUT_HOURS
+        
+        assert MAX_ACCOUNT_FAILURES == 5
+        assert ACCOUNT_LOCKOUT_HOURS == 1
+
+    def test_account_lockout_functions_exist(self):
+        """Account lockout helper functions should exist."""
+        from routers.auth import _is_account_locked, _lock_account, _get_consecutive_failures
+        import inspect
+        
+        assert inspect.iscoroutinefunction(_is_account_locked)
+        assert inspect.iscoroutinefunction(_lock_account)
+        assert inspect.iscoroutinefunction(_get_consecutive_failures)
+
+    def test_login_checks_account_lockout(self):
+        """Login endpoint should check account lockout status."""
+        import inspect
+        from routers.auth import login
+        
+        source = inspect.getsource(login)
+        assert "_is_account_locked" in source
+        assert "_lock_account" in source
+        assert "423" in source  # Service Unavailable for locked account

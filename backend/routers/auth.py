@@ -32,8 +32,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Login rate limiting configuration
-MAX_LOGIN_ATTEMPTS = 5
-LOGIN_LOCKOUT_MINUTES = 15
+MAX_LOGIN_ATTEMPTS = 5  # IP-based rate limit
+LOGIN_LOCKOUT_MINUTES = 15  # IP-based lockout duration
+
+# Account lockout configuration
+MAX_ACCOUNT_FAILURES = 5  # Consecutive failures before account lockout
+ACCOUNT_LOCKOUT_HOURS = 1  # 1 hour lockout for accounts
 
 
 async def _get_failed_attempts(ip: str) -> int:
@@ -47,10 +51,11 @@ async def _get_failed_attempts(ip: str) -> int:
     return count
 
 
-async def _record_login_attempt(ip: str, success: bool) -> None:
+async def _record_login_attempt(ip: str, success: bool, email: str = None) -> None:
     """Record a login attempt for rate limiting."""
     await db.login_attempts.insert_one({
         "ip": ip,
+        "email": email,
         "attempt_type": "failed" if not success else "success",
         "created_at": datetime.now(timezone.utc),
     })
@@ -62,6 +67,52 @@ async def _cleanup_old_attempts() -> None:
     await db.login_attempts.delete_many(
         {"created_at": {"$lt": cutoff}}
     )
+
+
+async def _get_consecutive_failures(email: str) -> int:
+    """Count consecutive failed login attempts for an account."""
+    # Get the last 10 attempts for this email to check consecutiveness
+    recent = await db.login_attempts.find({
+        "email": email,
+        "attempt_type": {"$in": ["failed", "success"]},
+    }).sort("created_at", -1).limit(10).to_list(None)
+    
+    consecutive = 0
+    for attempt in recent:
+        if attempt.get("attempt_type") == "failed":
+            consecutive += 1
+        else:
+            # Reset on any success
+            break
+    return consecutive
+
+
+async def _is_account_locked(email: str) -> bool:
+    """Check if an account is currently locked out."""
+    # Check for lockout record
+    lockout = await db.account_lockouts.find_one({"email": email})
+    if not lockout:
+        return False
+    
+    # Check if lockout has expired
+    lockout_until = lockout.get("lockout_until")
+    if lockout_until and lockout_until > datetime.now(timezone.utc):
+        return True
+    
+    # Lockout expired, remove it
+    await db.account_lockouts.delete_one({"email": email})
+    return False
+
+
+async def _lock_account(email: str, hours: int = ACCOUNT_LOCKOUT_HOURS) -> None:
+    """Lock an account for specified hours."""
+    lockout_until = datetime.now(timezone.utc) + timedelta(hours=hours)
+    await db.account_lockouts.update_one(
+        {"email": email},
+        {"$set": {"email": email, "locked_at": datetime.now(timezone.utc), "lockout_until": lockout_until}},
+        upsert=True
+    )
+    logger.warning(f"Account {email} locked out for {hours} hours due to {MAX_ACCOUNT_FAILURES} consecutive failures")
 
 
 async def _log_audit(action: str, detail: str, actor: str) -> None:
@@ -77,6 +128,7 @@ async def login(
 ) -> TokenResponse:
     # Rate limiting check
     client_ip = request.client.host if request.client else "unknown"
+    email = payload.email.lower()
     
     # Check if IP is locked out
     failed_count = await _get_failed_attempts(client_ip)
@@ -85,20 +137,38 @@ async def login(
         retry_after = LOGIN_LOCKOUT_MINUTES * 60
         raise HTTPException(
             status_code=429,
-            detail=f"too many failed attempts; retry after {retry_after} seconds",
+            detail=f"too many failed attempts from this IP; retry after {retry_after} seconds",
             headers={"Retry-After": str(retry_after)},
         )
+    
+    # Check if account is locked out
+    if await _is_account_locked(email):
+        raise HTTPException(
+            status_code=423,
+            detail=f"account locked due to too many failed attempts; retry after 1 hour",
+        )
 
-    doc = await db.users.find_one({"email": payload.email.lower()})
+    doc = await db.users.find_one({"email": email})
     if not doc or not verify_password(payload.password, doc.get("password_hash", "")):
-        # Record failed attempt
-        await _record_login_attempt(client_ip, success=False)
+        # Record failed attempt with email for account lockout tracking
+        await _record_login_attempt(client_ip, success=False, email=email)
+        
+        # Check consecutive failures for account lockout
+        consecutive_failures = await _get_consecutive_failures(email)
+        if consecutive_failures >= MAX_ACCOUNT_FAILURES:
+            await _lock_account(email)
+            await _cleanup_old_attempts()
+            raise HTTPException(
+                status_code=423,
+                detail=f"account locked due to {MAX_ACCOUNT_FAILURES} consecutive failed attempts",
+            )
+        
         # Cleanup old attempts periodically
         await _cleanup_old_attempts()
         raise HTTPException(status_code=401, detail="invalid email or password")
     
     # Record successful attempt and cleanup
-    await _record_login_attempt(client_ip, success=True)
+    await _record_login_attempt(client_ip, success=True, email=email)
     await _cleanup_old_attempts()
     
     user = User(**_clean(doc))
