@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import logging
+from datetime import datetime, timedelta, timezone
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from lib.auth import (
     current_user,
@@ -26,7 +27,41 @@ from models.auth import (
 )
 from models.containment import AuditEntry
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+# Login rate limiting configuration
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_LOCKOUT_MINUTES = 15
+
+
+async def _get_failed_attempts(ip: str) -> int:
+    """Count failed login attempts from an IP in the last lockout window."""
+    since = datetime.now(timezone.utc) - timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
+    count = await db.login_attempts.count_documents({
+        "ip": ip,
+        "attempt_type": "failed",
+        "created_at": {"$gte": since},
+    })
+    return count
+
+
+async def _record_login_attempt(ip: str, success: bool) -> None:
+    """Record a login attempt for rate limiting."""
+    await db.login_attempts.insert_one({
+        "ip": ip,
+        "attempt_type": "failed" if not success else "success",
+        "created_at": datetime.now(timezone.utc),
+    })
+
+
+async def _cleanup_old_attempts() -> None:
+    """Remove old login attempts to prevent unbounded growth."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    await db.login_attempts.delete_many(
+        {"created_at": {"$lt": cutoff}}
+    )
 
 
 async def _log_audit(action: str, detail: str, actor: str) -> None:
@@ -36,10 +71,36 @@ async def _log_audit(action: str, detail: str, actor: str) -> None:
 
 
 @router.post("/auth/login", response_model=TokenResponse)
-async def login(payload: LoginRequest) -> TokenResponse:
+async def login(
+    request: Request,
+    payload: LoginRequest,
+) -> TokenResponse:
+    # Rate limiting check
+    client_ip = request.client.host if request.client else "unknown"
+    
+    # Check if IP is locked out
+    failed_count = await _get_failed_attempts(client_ip)
+    if failed_count >= MAX_LOGIN_ATTEMPTS:
+        # Calculate retry-after time
+        retry_after = LOGIN_LOCKOUT_MINUTES * 60
+        raise HTTPException(
+            status_code=429,
+            detail=f"too many failed attempts; retry after {retry_after} seconds",
+            headers={"Retry-After": str(retry_after)},
+        )
+
     doc = await db.users.find_one({"email": payload.email.lower()})
     if not doc or not verify_password(payload.password, doc.get("password_hash", "")):
+        # Record failed attempt
+        await _record_login_attempt(client_ip, success=False)
+        # Cleanup old attempts periodically
+        await _cleanup_old_attempts()
         raise HTTPException(status_code=401, detail="invalid email or password")
+    
+    # Record successful attempt and cleanup
+    await _record_login_attempt(client_ip, success=True)
+    await _cleanup_old_attempts()
+    
     user = User(**_clean(doc))
     if not user.active:
         raise HTTPException(status_code=403, detail="account deactivated")

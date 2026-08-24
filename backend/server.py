@@ -21,7 +21,9 @@ from lib.db import client, db
 # Startup runs before the yield, shutdown after it. Add your own setup/teardown here.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from lib.auth import bootstrap_admin
+    from lib.auth import bootstrap_admin, validate_jwt_secret
+    # Validate JWT secret is configured before starting
+    validate_jwt_secret()
     await bootstrap_admin()
     yield
     client.close()

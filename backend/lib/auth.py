@@ -6,6 +6,7 @@ on X-API-Key so machine clients are unaffected.
 
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
@@ -17,12 +18,34 @@ from fastapi import Depends, Header, HTTPException
 from lib.db import db
 from models.auth import User
 
+logger = logging.getLogger(__name__)
+
 ALGORITHM = "HS256"
 TOKEN_TTL_HOURS = 12
 
 
 def _secret() -> str:
-    return os.environ.get("JWT_SECRET", "dev-only-insecure-secret")
+    """Get JWT secret from environment. Raises if not configured."""
+    secret = os.environ.get("JWT_SECRET")
+    if not secret:
+        raise RuntimeError(
+            "JWT_SECRET environment variable is not set. "
+            "This is required for production security. "
+            "Please set JWT_SECRET in backend/.env before starting the server."
+        )
+    if secret == "dev-only-insecure-secret":
+        raise RuntimeError(
+            "JWT_SECRET is set to the default insecure value. "
+            "Please generate a secure random secret and update backend/.env. "
+            "Use: python -c 'import secrets; print(secrets.token_hex(32))'"
+        )
+    return secret
+
+
+def validate_jwt_secret() -> None:
+    """Validate that JWT_SECRET is properly configured at startup."""
+    _secret()  # This will raise if not configured properly
+    logger.info("JWT_SECRET is properly configured")
 
 
 def hash_password(raw: str) -> str:
