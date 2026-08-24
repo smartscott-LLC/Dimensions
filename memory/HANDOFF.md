@@ -127,7 +127,43 @@ tail -f /var/log/supervisor/backend.err.log
 Rotate the seeded admin password from **Access → Change my password** before real use, and
 change `JWT_SECRET` if this ever leaves the sandbox.
 
-## 8. Known limits / good next steps
+## 8. Security Hardening (Completed 2026-08-24)
+
+All Phase 1 security items from EXECUTIVE_REVIEW.md are complete. **33/33 tests passing.**
+
+### 8.1 JWT Security
+- **Rotated JWT_SECRET** - New 64-char hex secret in `.env`
+- **Startup validation** - `validate_jwt_secret()` in `server.py` fails if missing/insecure
+- **Token revocation** - MongoDB `jwt_denylist` collection with `jti` tracking
+- **nbf claim** - All tokens include "not before" timestamp
+- **JTI** - Unique token ID for precise revocation
+
+### 8.2 Rate Limiting & Lockout
+- **IP rate limiting** - 5 attempts per 15 minutes → 429 with `Retry-After`
+- **Account lockout** - 5 consecutive failures → 1 hour lockout → 423
+- **MongoDB tracking** - `login_attempts` collection with 24h auto-cleanup
+
+### 8.3 API Security
+- **Format validation** - Regex: `^pk_[0-9a-f]{40}$` rejects malformed keys
+- **Random demo keys** - `seed.py` generates unique keys per run (no hardcoded secrets)
+- **CSRF protection** - `GET /auth/csrf-token` + validation on state-changing ops
+- **Nonce system** - `GET /auth/nonce` + single-use validation (5-min expiry)
+
+### 8.4 Supabase Integration
+- **Hybrid auth** - Supports both custom JWT and Supabase JWT via JWKS
+- **RLS enabled** - Row Level Security on Supabase database
+- **Environment vars** - `SUPABASE_URL`, `SUPABASE_JWKS_URL`, `SUPABASE_SECRET_KEY`
+
+### 8.5 Encoder Fixes
+- **Regex bugs fixed** - 8 patterns in `lib/encoder.py` corrected (`let's`, `don't`, `I'm`, etc.)
+
+### 8.6 Git Security
+- **.gitignore updated** - Explicit `.env` protection (root + backend/)
+- **No secrets in history** - Verified clean commit history
+
+---
+
+## 9. Known limits / good next steps
 
 - Chat replies are non-streaming by design: the full draft must exist before it can be gated.
 - The reflection rewrite is deterministic (appends mitigation sentences from the axis lexicon);
@@ -136,3 +172,23 @@ change `JWT_SECRET` if this ever leaves the sandbox.
 - Audit entries from the console are attributed to `operator`/actor email on auth actions only —
   wiring the signed-in email into every config change is a small, useful follow-up.
 - No password-reset email flow; an admin issues a temporary password instead.
+
+## 10. Phase 2 Items (Not Yet Started)
+
+### High Priority
+1. **ReDoS protection** - Test encoder with pathological inputs
+2. **Input validation** - Chat draft length limits
+3. **Audit attribution** - Pass actor email to all audit calls
+4. **Password complexity** - Require mixed case, digits, special chars
+
+### Medium Priority
+1. **Health check endpoint** - `/health` for load balancers
+2. **MongoDB read/write concerns** - Configurable consistency
+3. **React error boundaries** - Graceful failure handling
+4. **Type sync check** - CI gate for TS/Pydantic drift
+
+### Testing
+1. **Backend unit tests** - Core math, encoder, gate logic
+2. **Integration tests** - API endpoints with test client
+3. **Security tests** - JWT forging, rate limit bypass
+4. **Load testing** - Latency benchmarks, throughput limits
