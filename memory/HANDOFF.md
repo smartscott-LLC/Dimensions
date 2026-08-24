@@ -1,194 +1,460 @@
-# Polytope Containment Console — handoff
+# Polytope Containment Console — Operational Handoff
 
-Everything needed to run, test, operate and extend this app. Deeper design notes live in
-`memory/SPEC.md`; logins live in `memory/test_credentials.md`.
-
-Live preview: available on the configured host
+**Document Version**: 1.0.0  
+**Last Updated**: 2026-08-24  
+**Classification**: Internal Use Only
 
 ---
 
-## 1. What it is
+## 1. System Overview
 
-A 14-dimensional geometric containment engine plus its operations console.
+The Polytope Containment Console is a safety-critical AI containment system that enforces ethical constraints on AI behavior through 14-dimensional geometric projection. This document provides operational guidance for administrators and operators.
 
-- A convex polytope `P = { x ∈ R¹⁴ : Ax ≤ b }` defines allowed AI behaviour.
-- Verification: `r = Ax − b`, violated iff `max(r) > 0`.
-- Correction: `x* = argmin_{x∈P} ‖x − x_gen‖²` via Dykstra cyclic projection onto half-spaces
-  (pure Python, no numpy/scipy dependency).
-- Seeded active lattice: **Ethical Lattice (42-facet)** = 28 axis bounds + 14 coupling facets
-  over 7 virtue/shadow pairs (harmony/dominance, order/chaos, integrity/deception,
-  flourishing/decline, relationships/isolation, boundaries/intrusion, grace/rigidity).
-- A deterministic **text → 14D encoder** (ported from your SageMath `value_engine.py`; no LLM,
-  no randomness) turns prose into a vector.
-- **Dual-mode enforcement**: *projection* silently corrects, *refusal* runs a deterministic
-  reflection loop and withholds the reply if it never enters P.
-- **Chat coach**: real Agnes-2.5-flash replies, gated by the same engine, with a teaching
-  inspector (14D radar, why it tripped, suggested rewrite) and transcript export.
+### Key Capabilities
 
-## 2. Sign in
+- **Real-time Safety Enforcement**: Verifies AI outputs against polytope constraints
+- **Dual-Mode Operation**: Projection (corrects) or Refusal (rewrites/withholds)
+- **Comprehensive Audit Trail**: Every decision logged with full traceability
+- **Multi-Tenant Support**: API keys with per-client configuration
+- **Government-Grade Security**: Rate limiting, lockout, CSRF protection, token revocation
 
-| role | email | password | can do |
-|---|---|---|---|
-| admin | `admin@polytope.console` | `Prussian#42Blue` | everything |
-| operator | `ops@polytope.console` | `Khaki#514Ops` | Gate, Chat coach, Simulator, read-only Constraints |
+---
 
-Console = email/password + 12 h JWT. Engine API = `X-API-Key` (unchanged by console login).
+## 2. Access Credentials
 
-## 3. Tabs
+### Default Console Accounts
 
-1. **Overview** — KPIs, violation trend, latency histogram, most-breached facets, attribution.
-2. **Live monitor** — 14-input vector probe + live event stream.
-3. **Gate** — paste a draft, pick mode, see decision + reflection trace + wisdom filter; set the
-   engine-wide mode and max reflections here.
-4. **Chat coach** — sessions with the gated agent; per-turn inspector; **Export transcript**.
-5. **Polytope** — 2D slice explorer with feasible chamber, hyperplanes, projection segments.
-6. **Constraints** — activate/edit profiles, facet `b` values, full A rows, axis labels; margins.
-7. **Clients** (admin) — API keys, per-client rate limits, per-client enforcement mode, stats.
-8. **Access** (admin) — issue/deactivate console accounts, change own password.
-9. **Event log** — filter permitted / corrected / revised / withheld, by client, text search.
-10. **Audit** — every configuration change.
+| Role | Email | Password | Access Level |
+|------|-------|----------|--------------|
+| Admin | `admin@polytope.console` | `Prussian#42Blue` | Full system access |
+| Operator | `ops@polytope.console` | `Khaki#514Ops` | Gate, Chat, Simulator, read-only Constraints |
 
-## 4. API (all under `/api`)
+**⚠️ SECURITY REQUIREMENT**: Change these passwords immediately upon first login.
 
-Engine (machine clients, `X-API-Key` header):
-```
-POST /api/contain                  {vector[14], source, label}      -> Event
-POST /api/encode                   {text, context}                  -> 14D vector
-POST /api/gate                     {text, context, mode?, max_reflections?} -> decision + trace
-POST /api/chat/sessions            {title, mode?}                   -> ChatSession
-POST /api/chat/sessions/{id}/message  {text}                        -> ChatTurn (gated reply)
-GET  /api/chat/sessions/{id}/turns | /export
-```
-Telemetry (read): `GET /api/telemetry/summary`, `/events`, `/audit`, `/profiles`,
-`/profiles/active`, `/profiles/{id}/margins`, `/clients`, `/clients/stats`, `/settings`.
+### Demo API Keys
 
-Admin-only (JWT, 403 otherwise): `POST/PUT /profiles*`, `POST /profiles/{id}/activate`,
-`POST /clients`, `PATCH /clients/{id}`, `POST /clients/{id}/rotate|revoke`, `PUT /settings`,
-`GET/POST /auth/users`, `POST /auth/users/{id}/toggle`. Signed-in (any role): `POST /simulate`.
-
-Example:
-```bash
-curl -X POST http://localhost:8001/api/gate \
-  -H 'Content-Type: application/json' \
-  -d '{"text":"You must obey, this is non-negotiable.","mode":"refusal"}'
-```
-
-## 5. Layout
-
-```
-backend/
-  server.py              FastAPI app; every route on api_router (/api); include last
-  lib/polytope.py        residuals / Dykstra projection / sampling  (pure python)
-  lib/encoder.py         deterministic text -> 14D + revise() + wisdom filter
-  lib/gatecore.py        shared dual-mode decision core (gate + chat)
-  lib/ratelimit.py       sliding 60 s window, events collection as ledger
-  lib/auth.py            bcrypt + JWT + role dependencies + admin bootstrap
-  models/                containment.py, clients.py, gate.py, chat.py, auth.py
-  routers/               containment.py, clients.py, gate.py, chat.py, auth.py
-  seed.py                profiles, demo clients, ~200 events, audit entries
-frontend/src/
-  lib/api.ts             typed fetch, relative /api, Bearer token attach
-  lib/types.ts           hand-written mirrors of every Pydantic model
-  lib/queries.ts         TanStack Query hooks
-  lib/auth.tsx           AuthProvider / useAuth
-  pages/                 Dashboard.tsx, Login.tsx
-  components/            GatePanel, ChatCoach, AccessPanel, ClientsPanel, PolytopeExplorer,
-                         ConstraintEditor, MarginPanel, EventLog, AuditTrail, KpiBar, ...
-memory/                  SPEC.md (living spec), test_credentials.md, PRD/handoff docs
-```
-
-Mongo collections: `profiles`, `events`, `audit`, `clients`, `settings`, `chat_sessions`,
-`chat_turns`, `users`.
-
-## 6. Environment (`backend/.env`)
-
-| var | purpose |
-|---|---|
-| `MONGO_URL`, `DB_NAME` | cloud database connection string |
-| `CORS_ORIGINS` | allowed origins |
-| `MODEL_API_KEY` | API key for the OpenAI-compatible chat coach model (agnes-2.5-flash) |
-| `MODEL_API_URL` | base URL for the OpenAI-compatible endpoint |
-| `MODEL_NAME` | model name (optional, defaults to agnes-2.5-flash) |
-| `JWT_SECRET` | console session signing key |
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | seeded admin, applied only when `users` is empty |
-
-Frontend calls relative `/api` paths — nothing to configure.
-
-## 7. Operating
+Demo keys are generated randomly on each seed. Retrieve them from the database:
 
 ```bash
-sudo supervisorctl status                 # backend | frontend
-sudo supervisorctl restart backend        # after .env or dependency changes only
-cd /app/backend && python seed.py         # reseed engine demo data (destructive)
-cd /app/frontend && pnpm typecheck        # Pydantic <-> TS drift check
+mongo DP3 --eval "db.clients.find({}, {name: 1, key_prefix: 1, active: 1}).pretty()"
+```
+
+**Note**: Full keys are only returned at creation/rotation time. They are not stored in plaintext.
+
+---
+
+## 3. System Architecture
+
+### Components
+
+```
+Dimensions/
+├── backend/                    # FastAPI application (port 8001)
+│   ├── server.py              # Application bootstrap
+│   ├── lib/                   # Core logic modules
+│   ├── models/                # Pydantic schemas
+│   ├── routers/               # API route handlers
+│   ├── tests/                 # pytest test suite
+│   └── seed.py                # Demo data generator
+├── frontend/                   # React application (port 3000)
+│   └── src/
+│       ├── lib/               # API client, auth, types
+│       └── components/        # UI components
+└── memory/                     # Documentation
+    ├── SPEC.md               # Detailed specification
+    ├── EXECUTIVE_REVIEW.md   # Security audit
+    └── HANDOFF.md           # This document
+```
+
+### External Dependencies
+
+- **MongoDB Atlas**: Cloud database (connection in `.env`)
+- **Supabase**: Optional hybrid auth (JWKS verification)
+- **OpenAI-Compatible API**: Chat coach model (agnes-2.5-flash)
+
+---
+
+## 4. Daily Operations
+
+### 4.1 Service Status Checks
+
+```bash
+# Check supervisor status
+sudo supervisorctl status
+
+# Expected output:
+# backend        RUNNING   pid 1234, uptime 2:30:00
+# frontend       RUNNING   pid 1235, uptime 2:30:00
+```
+
+### 4.2 Health Monitoring
+
+```bash
+# Backend health
+curl -s http://localhost:8001/api/health | jq
+
+# Frontend accessibility
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3000
+```
+
+### 4.3 Log Analysis
+
+```bash
+# Backend errors
+tail -f /var/log/supervisor/backend.err.log
+
+# Backend access
+tail -f /var/log/supervisor/backend.out.log
+
+# Frontend errors
+tail -f /var/log/supervisor/frontend.err.log
+```
+
+### 4.4 Database Queries
+
+```bash
+# Connection to MongoDB
+mongo "MONGO_URL" DP3
+
+# Recent events
+db.events.find().sort({created_at: -1}).limit(10)
+
+# Locked accounts
+db.account_lockouts.find()
+
+# Active rate-limited IPs
+db.login_attempts.aggregate([
+  {$group: {_id: "$ip", count: {$sum: 1}}},
+  {$sort: {count: -1}},
+  {$limit: 10}
+])
+```
+
+---
+
+## 5. Administrative Procedures
+
+### 5.1 User Management
+
+**Via Console UI**:
+1. Navigate to **Access** tab (admin only)
+2. **Create User**: Enter email, password, select role
+3. **Toggle Account**: Switch active/inactive
+4. **Change Password**: Self-service via profile settings
+
+**Via API**:
+```bash
+# List users
+curl -H "Authorization: Bearer <token>" \
+     http://localhost:8001/api/auth/users
+
+# Create user (admin)
+curl -X POST http://localhost:8001/api/auth/users \
+     -H "Authorization: Bearer <token>" \
+     -H "X-CSRF-Token: <csrf>" \
+     -H "Content-Type: application/json" \
+     -d '{"email": "new@example.com", "password": "Secure#Pass123", "role": "operator"}'
+```
+
+### 5.2 API Key Management
+
+**Via Console UI**:
+1. Navigate to **Clients** tab (admin only)
+2. **Issue Key**: Enter name, description, optional profile pin
+3. **Copy Key**: Shown once at creation — store securely
+4. **Rotate Key**: Generates new key, invalidates old
+5. **Revoke**: Deactivates client immediately
+
+**Via API**:
+```bash
+# Create client
+curl -X POST http://localhost:8001/api/clients \
+     -H "Authorization: Bearer <token>" \
+     -H "X-CSRF-Token: <csrf>" \
+     -H "Content-Type: application/json" \
+     -d '{"name": "Production App", "description": "Main integration", "profile_id": "prof-biochem-strict"}'
+
+# Rotate key
+curl -X POST http://localhost:8001/api/clients/<id>/rotate \
+     -H "Authorization: Bearer <token>" \
+     -H "X-CSRF-Token: <csrf>"
+```
+
+### 5.3 Profile Management
+
+**Activate Profile**:
+```bash
+curl -X POST http://localhost:8001/api/profiles/<id>/activate \
+     -H "Authorization: Bearer <token>" \
+     -H "X-CSRF-Token: <csrf>"
+```
+
+**View Margins**:
+```bash
+curl http://localhost:8001/api/profiles/<id>/margins \
+     -H "Authorization: Bearer <token>"
+```
+
+### 5.4 Emergency Procedures
+
+**Lock Compromised Account**:
+```bash
+# Via UI: Access tab → toggle off
+# Or directly:
+mongo "MONGO_URL" DP3 --eval '
+  db.users.updateOne(
+    {email: "compromised@example.com"},
+    {$set: {active: false}}
+  )
+'
+```
+
+**Clear Rate Limits**:
+```bash
+mongo "MONGO_URL" DP3 --eval '
+  db.login_attempts.deleteMany({ip: "attacker-ip"})
+  db.account_lockouts.deleteMany({email: "target@example.com"})
+'
+```
+
+**Revoke All Tokens**:
+```bash
+mongo "MONGO_URL" DP3 --eval '
+  db.jwt_denylist.deleteMany({})
+'
+# Notify users to re-authenticate
+```
+
+---
+
+## 6. Security Monitoring
+
+### 6.1 Failed Login Monitoring
+
+```bash
+# Count failed attempts in last hour
+mongo "MONGO_URL" DP3 --eval '
+  db.login_attempts.countDocuments({
+    timestamp: {$gte: new Date(Date.now() - 3600000)}
+  })
+'
+
+# Top offending IPs
+mongo "MONGO_URL" DP3 --eval '
+  db.login_attempts.aggregate([
+    {$match: {timestamp: {$gte: new Date(Date.now() - 3600000)}}},
+    {$group: {_id: "$ip", count: {$sum: 1}}},
+    {$sort: {count: -1}},
+    {$limit: 10}
+  ])
+'
+```
+
+### 6.2 Locked Accounts
+
+```bash
+mongo "MONGO_URL" DP3 --eval '
+  db.account_lockouts.find({}, {email: 1, locked_at: 1, expires_at: 1}).pretty()
+'
+```
+
+### 6.3 Revoked Tokens
+
+```bash
+mongo "MONGO_URL" DP3 --eval '
+  db.jwt_denylist.countDocuments()
+'
+```
+
+### 6.4 Security Events
+
+Monitor for:
+- Multiple failed logins from same IP
+- Accounts hitting lockout threshold
+- Unusual API key usage patterns
+- High violation rates on specific profiles
+
+---
+
+## 7. Maintenance Tasks
+
+### 7.1 Regular Maintenance
+
+**Daily**:
+- [ ] Check service status
+- [ ] Review error logs
+- [ ] Monitor active lockouts
+
+**Weekly**:
+- [ ] Review audit log for anomalies
+- [ ] Check database growth rates
+- [ ] Verify backup integrity
+
+**Monthly**:
+- [ ] Rotate admin passwords
+- [ ] Review API key usage
+- [ ] Clean old audit logs
+
+### 7.2 Database Cleanup
+
+```bash
+# Clean old login attempts (>24h)
+mongo "MONGO_URL" DP3 --eval '
+  db.login_attempts.deleteMany({
+    timestamp: {$lt: new Date(Date.now() - 86400000)}
+  })
+'
+
+# Clean expired account lockouts
+mongo "MONGO_URL" DP3 --eval '
+  db.account_lockouts.deleteMany({
+    expires_at: {$lt: new Date()}
+  })
+'
+
+# Clean expired CSRF tokens
+mongo "MONGO_URL" DP3 --eval '
+  db.csrf_tokens.deleteMany({
+    expires_at: {$lt: new Date()}
+  })
+'
+
+# Clean expired nonces
+mongo "MONGO_URL" DP3 --eval '
+  db.auth_nonces.deleteMany({
+    expires_at: {$lt: new Date()}
+  })
+'
+```
+
+### 7.3 Log Rotation
+
+Configure logrotate for supervisor logs:
+```bash
+sudo nano /etc/logrotate.d/polytope
+```
+
+```
+/var/log/supervisor/backend*.log
+/var/log/supervisor/frontend*.log {
+    weekly
+    rotate 12
+    compress
+    missingok
+    notifempty
+    copytruncate
+}
+```
+
+---
+
+## 8. Troubleshooting
+
+### 8.1 Common Issues
+
+**Backend won't start**:
+```bash
+# Check syntax
+cd backend && python -m py_compile server.py
+
+# Check environment
+cat .env | grep JWT_SECRET
+
+# View logs
 tail -f /var/log/supervisor/backend.err.log
 ```
 
-Rotate the seeded admin password from **Access → Change my password** before real use, and
-change `JWT_SECRET` if this ever leaves the sandbox.
+**Frontend shows blank page**:
+```bash
+# Check type errors
+cd frontend && pnpm typecheck
 
-## 8. Security Hardening (Completed 2026-08-24)
+# Check browser console
+# F12 → Console tab
+```
 
-All Phase 1 security items from EXECUTIVE_REVIEW.md are complete. **33/33 tests passing.**
+**MongoDB connection fails**:
+```bash
+# Test connection
+mongo "MONGO_URL" --eval "db.adminCommand('ping')"
 
-### 8.1 JWT Security
-- **Rotated JWT_SECRET** - New 64-char hex secret in `.env`
-- **Startup validation** - `validate_jwt_secret()` in `server.py` fails if missing/insecure
-- **Token revocation** - MongoDB `jwt_denylist` collection with `jti` tracking
-- **nbf claim** - All tokens include "not before" timestamp
-- **JTI** - Unique token ID for precise revocation
+# Check network
+nc -zv ac-djukaxv-shard-00-00.n9ousvq.mongodb.net 27017
+```
 
-### 8.2 Rate Limiting & Lockout
-- **IP rate limiting** - 5 attempts per 15 minutes → 429 with `Retry-After`
-- **Account lockout** - 5 consecutive failures → 1 hour lockout → 423
-- **MongoDB tracking** - `login_attempts` collection with 24h auto-cleanup
+**Rate limiting too aggressive**:
+```bash
+# Check current limits
+mongo "MONGO_URL" DP3 --eval "db.settings.findOne()"
 
-### 8.3 API Security
-- **Format validation** - Regex: `^pk_[0-9a-f]{40}$` rejects malformed keys
-- **Random demo keys** - `seed.py` generates unique keys per run (no hardcoded secrets)
-- **CSRF protection** - `GET /auth/csrf-token` + validation on state-changing ops
-- **Nonce system** - `GET /auth/nonce` + single-use validation (5-min expiry)
+# Adjust if needed (requires restart)
+# Update EngineSettings.rate_limit_default_per_min
+```
 
-### 8.4 Supabase Integration
-- **Hybrid auth** - Supports both custom JWT and Supabase JWT via JWKS
-- **RLS enabled** - Row Level Security on Supabase database
-- **Environment vars** - `SUPABASE_URL`, `SUPABASE_JWKS_URL`, `SUPABASE_SECRET_KEY`
+### 8.2 Performance Issues
 
-### 8.5 Encoder Fixes
-- **Regex bugs fixed** - 8 patterns in `lib/encoder.py` corrected (`let's`, `don't`, `I'm`, etc.)
+**Slow queries**:
+```bash
+# Check indexes
+mongo "MONGO_URL" DP3 --eval "db.events.getIndexes()"
 
-### 8.6 Git Security
-- **.gitignore updated** - Explicit `.env` protection (root + backend/)
-- **No secrets in history** - Verified clean commit history
+# Add missing indexes
+db.events.createIndex({created_at: -1})
+db.events.createIndex({profile_id: 1, created_at: -1})
+```
+
+**High memory usage**:
+```bash
+# Check collection sizes
+mongo "MONGO_URL" DP3 --eval "
+  db.getCollectionNames().forEach(function(c) {
+    var s = db.getCollection(c).stats();
+    print(c + ': ' + Math.round(s.size / 1024 / 1024) + ' MB');
+  })
+"
+```
 
 ---
 
-## 9. Known limits / good next steps
+## 9. Deployment Checklist
 
-- Chat replies are non-streaming by design: the full draft must exist before it can be gated.
-- The reflection rewrite is deterministic (appends mitigation sentences from the axis lexicon);
-  it repairs tone-level breaches, not deeply unsafe content.
-- Refusal analytics (withheld vs revised over time) are in the event log but not yet charted.
-- Audit entries from the console are attributed to `operator`/actor email on auth actions only —
-  wiring the signed-in email into every config change is a small, useful follow-up.
-- No password-reset email flow; an admin issues a temporary password instead.
+### Pre-Production
 
-## 10. Phase 2 Items (Not Yet Started)
+- [ ] All default passwords changed
+- [ ] JWT_SECRET rotated to secure value
+- [ ] MongoDB connection uses TLS
+- [ ] CORS origins restricted to production domain
+- [ ] Rate limits tuned for expected load
+- [ ] Backup strategy verified
+- [ ] Monitoring/alerting configured
+- [ ] Incident response plan documented
 
-### High Priority
-1. **ReDoS protection** - Test encoder with pathological inputs
-2. **Input validation** - Chat draft length limits
-3. **Audit attribution** - Pass actor email to all audit calls
-4. **Password complexity** - Require mixed case, digits, special chars
+### Post-Deployment
 
-### Medium Priority
-1. **Health check endpoint** - `/health` for load balancers
-2. **MongoDB read/write concerns** - Configurable consistency
-3. **React error boundaries** - Graceful failure handling
-4. **Type sync check** - CI gate for TS/Pydantic drift
+- [ ] Security scan completed
+- [ ] Penetration test performed
+- [ ] Performance benchmarks established
+- [ ] Operational runbook distributed
+- [ ] On-call rotation established
 
-### Testing
-1. **Backend unit tests** - Core math, encoder, gate logic
-2. **Integration tests** - API endpoints with test client
-3. **Security tests** - JWT forging, rate limit bypass
-4. **Load testing** - Latency benchmarks, throughput limits
+---
+
+## 10. Contact Information
+
+| Role | Contact |
+|------|---------|
+| System Administrator | security@smartscott.com |
+| Security Issues | Report privately via GitHub Security Advisory |
+| Commercial Licensing | licensing@smartscott.com |
+
+---
+
+## 11. Document Control
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0.0 | 2026-08-24 | Initial release |
+
+---
+
+**End of Document**

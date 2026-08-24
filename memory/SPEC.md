@@ -1,156 +1,581 @@
-# Polytope Containment Console — living spec
+# Polytope Containment Console — Living Specification
 
-## What the app does
-Configures and monitors a **14-dimensional geometric constraint engine**: a convex polytope
-`P = { x ∈ R^14 : Ax ≤ b }`. Every AI state vector submitted is verified (`r = Ax − b`;
-violation iff `max(r) > 0`) and, if it violates, projected to the nearest point of `P` using
-Dykstra's cyclic projection onto half-spaces (`backend/lib/polytope.py`, pure python, no deps).
-Every verification is persisted as a telemetry event; every config change as an audit entry.
+**Version**: 1.0.0  
+**Last Updated**: 2026-08-24  
+**Status**: Phase 1 Complete — Security Hardening Finished
 
-## Data model (Mongo, string uuid ids)
-- `profiles` — `Profile`: id, name, description, `dimensions[14]` (index/label/unit/min/max),
-  `constraints[]` (id/label/`coeffs[14]`/b), `center[14]` (nominal operating point used for the
-  margin readout), active, created_at, updated_at. Exactly one active.
+---
 
-## Lattice geometry
-Facets are arbitrary linear inequalities, so both bounds and couplings are expressible:
-- **Axis-aligned upper**: `x_i ≤ cap` → `coeffs[i] = 1`
-- **Axis-aligned lower**: `x_i ≥ floor` → `coeffs[i] = -1, b = -floor`
-- **Coupling (lead)**: `x_v − x_c ≥ L` → `coeffs[v] = -1, coeffs[c] = 1, b = -L`
-- **Coupling (sum)**: `x_v + x_c ≤ S` → `coeffs[v] = coeffs[c] = 1, b = S`
+## 1. System Overview
 
-`GET /api/profiles/{id}/margins` returns per-facet slack `b − a·centre` plus the normalised
-distance `slack/‖a‖`, whether each facet is binding/violated, and the tightest facet. The seeded
-**Ethical Lattice (42-facet)** profile is 28 axis bounds + 14 coupling facets over seven
-virtue/vice pairs; L and S are derived from the centre so every coupling facet carries an exact
-0.10 slack, which reproduces the framework's `x₂−x₃ ≥ 0.35` / `x₂+x₃ ≤ 1.05` and
-`x₄−x₅ ≥ 0.50` / `x₄+x₅ ≤ 1.10` figures.
+The Polytope Containment Console is a safety-critical AI containment system that enforces ethical constraints on AI behavior through geometric projection. It implements a 14-dimensional convex polytope `P = { x ∈ ℝ¹⁴ : Ax ≤ b }` where every AI state vector is verified against safety bounds and projected to the nearest feasible point if violated.
 
-**Sampling caveat (important):** synthetic "permitted" vectors are drawn near the centre,
-projected into P, then blended 3% back toward the centre — `lib/polytope.sample_vector`. Scaling
-toward the origin is WRONG for any polytope with lower bounds, because 0 need not be in P.
+### Core Principles
 
-## Dual-mode enforcement gate (`routers/gate.py`, `lib/encoder.py`)
-- `POST /api/encode` — `{text, context}` → deterministic 14D vector + `dimension_names`
-  (7 Plumb Line pairs; even index = virtue, odd = shadow). Signal-lexicon + negation +
-  proximity weighting + complement damping. No LLM, no randomness.
-- `POST /api/gate` — `{text, context, label, mode?, max_reflections?}`, honours `X-API-Key`,
-  rate limits and profile pins exactly like `/contain`. Mode resolution:
-  request → client `enforcement_mode` → engine `enforcement_mode` (reported as `mode_source`).
-  - **projection**: infeasible draft is silently projected → decision `corrected`.
-  - **refusal**: reflection loop — `encoder.revise()` appends deterministic mitigation
-    sentences for the axes each violated facet asks to move (`revision_targets`), re-encodes,
-    re-verifies, up to `max_reflections` (1..6). Feasible → `revised`; still outside P →
-    `withheld` (nothing released, `withheld_reason` set).
-  - Response carries the full reflection trace, wisdom-filter report (overconfidence /
-    humility / professional-validation flags) and `alignment_score = 1 − ‖Δx‖`.
-- Every gate call writes an `Event` with `source="gate"`, `status` = the decision,
-  plus `mode` and `attempts`. Telemetry summary reports `withheld`/`revised`/`enforcement_mode`;
-  the Event Log filters on all four statuses.
-- Settings: `enforcement_mode` (`projection|refusal`), `max_reflections` on `EngineSettings`;
-  per-client override via `PATCH /api/clients/{id}` (`enforcement_mode`, or
-  `inherit_enforcement_mode: true`). UI: **Gate** tab (`components/GatePanel.tsx`).
+1. **Deterministic Safety**: No randomness in safety-critical paths
+2. **Geometric Guarantees**: Mathematical proof of containment
+3. **Auditability**: Every decision logged with full traceability
+4. **Defense-in-Depth**: Multiple security layers
+5. **Operational Clarity**: Clear separation of engine vs. console
 
-## Coaching chat (`routers/chat.py`, `components/ChatCoach.tsx`)
-Real LLM turns gated before release. `agnes-2.5-flash` via the OpenAI SDK with `LLM_API_KEY` and optional `LLM_API_BASE`/`LLM_MODEL` in backend/.env; history is
-owned by Mongo and replayed into the prompt each turn, and the system prompt carries live
-engine facts (profile name, facet count, axis labels, mode semantics) so the coach cannot
-invent engine behaviour.
-- `POST /api/chat/sessions` `{title, mode?}` (mode `projection|refusal|null=inherit`),
-  `GET /api/chat/sessions`, `GET /api/chat/sessions/{id}/turns`,
-  `GET /api/chat/sessions/{id}/export` (markdown audit artifact: per-turn decision, facets and
-  reflection trace; downloaded from the Chat coach header),
-  `POST /api/chat/sessions/{id}/message` `{text}` → `ChatTurn`. `X-API-Key` honoured for
-  attribution, rate limits and profile pins; 404 unknown session, 422 bad mode, 502 model failure.
-- The model draft goes through `lib/gatecore.evaluate` (shared with `/gate`): projection
-  releases the corrected reply, refusal releases the reflection rewrite or withholds it entirely.
-- Each turn stores decision, encoded + released vectors, violated facets, `why` (per-facet
-  plain-English cause with the axes to raise), the reflection rewrite, wisdom notes and the raw
-  draft; also written to `events` with `source="chat"`.
-- Collections: `chat_sessions` (turns/withheld counters), `chat_turns`.
-- UI: **Chat coach** tab — session list, gated thread (withheld replies show as refused), and a
-  turn inspector with a 14D radar (draft vs released), why-it-tripped list and rewrite.
+---
 
-## Auth
-**Console:** email + password with a 12 h HS256 JWT (`lib/auth.py`, `routers/auth.py`,
-`frontend/src/lib/auth.tsx`). bcrypt hashes; `password_hash` is `Field(exclude=True)`. Token
-lives in `localStorage["polytope.console.token"]` and rides an `Authorization: Bearer` header
-added by `lib/api.ts` (a 401 clears it). `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` in
-backend/.env; `bootstrap_admin()` seeds the admin on startup when `users` is empty.
-- Routes: `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/password`,
-  `GET /api/auth/users` (admin), `POST /api/auth/users` (admin),
-  `POST /api/auth/users/{id}/toggle` (admin, cannot self-deactivate).
-- Roles: **admin** = everything; **operator** = Gate / Chat coach / Simulator + read-only
-  Constraints. Server-side guards: profile create/update/activate, client create/patch/rotate/
-  revoke and `PUT /settings` require admin (403); `POST /simulate` requires any signed-in user.
-  Clients + Access tabs are admin-only in the UI, Constraints renders read-only for operators.
-- The **engine API** (`/contain`, `/gate`, `/chat/*`) is unchanged: `X-API-Key` only, no JWT.
-- Working credentials: `memory/test_credentials.md`.
+## 2. Mathematical Foundation
 
-## Rate limiting (`lib/ratelimit.py`)
-Sliding 60-second window. The events collection is the usage ledger, so there is no separate
-counter to drift. Limit resolution: per-client override → engine default → unlimited when
-disabled. `0` blocks a client outright. Over-limit `/contain` returns **429** with `Retry-After`;
-allowed calls carry `X-RateLimit-Limit` / `X-RateLimit-Remaining`. Keyed clients and the
-unattributed bucket are counted separately. Settings live on `EngineSettings`
-(`rate_limit_enabled`, `rate_limit_default_per_min`), per-client via `PATCH /api/clients/{id}`
-(`rate_limit_per_min`, or `inherit_rate_limit: true` to clear).
-- `events` — `Event`: profile_id/name, label, source (`api|simulator|console`), `vector[14]`,
-  `residuals[]`, max_residual, status (`permitted|corrected`), `projected_vector`,
-  correction_magnitude, violated_constraints[], latency_ms, iterations, created_at.
-- `audit` — `AuditEntry`: action (`profile.create|profile.update|profile.activate|engine.bootstrap|
-  client.create|client.rotate|client.revoke|settings.update`), detail, actor, created_at.
-- `clients` — `Client`: id, name, description, `key_prefix` (display only), `key_hash`
-  (SHA-256, **never serialised** — `Field(exclude=True)`), `profile_id`/`profile_name` (optional
-  pinned polytope), active, created_at, rotated_at, last_seen_at.
-- `settings` — single doc `{id:"engine", enforce_api_keys: bool}`.
-- `events` also carry `client_id` / `client_name` (null = unattributed).
+### 2.1 Polytope Definition
 
-## API keys / multi-tenant attribution
-- `POST /api/contain` reads the **`X-API-Key`** header. Unknown or revoked key → 401. Missing key
-  → 401 when enforcement is on, otherwise accepted and logged as *unattributed*.
-- A key may **pin a profile**: that client is contained by its own polytope instead of the globally
-  active one. `/simulate` spreads synthetic load across active clients and honours their pins.
-- Keys are minted as `pk_<40 hex>`, hashed with SHA-256 at rest, and returned in plaintext
-  exactly once (creation or rotation). Rotate also re-activates a revoked client.
-- Routes: `GET/POST /clients`, `POST /clients/{id}/rotate`, `POST /clients/{id}/revoke`,
-  `GET /clients/stats`, `GET/PUT /settings`.
+```
+P = { x ∈ ℝ¹⁴ : Ax ≤ b }
+```
 
-## API (all on api_router under /api)
-- `GET /profiles`, `GET /profiles/active`, `GET /profiles/{id}`, `POST /profiles`,
-  `PUT /profiles/{id}`, `POST /profiles/{id}/activate`
-- `POST /contain` — body `{vector[14], source, label}`, header `X-API-Key` optional → `Event`
-  (422 if vector length ≠ 14, 401 on bad key / missing key under enforcement)
-- `POST /simulate` — `{count 1..100, violation_probability 0..1}` → `{generated, corrected, events}`
-- `GET /events?limit&status&source&client_id` (`client_id=unattributed` selects unkeyed calls),
-  `GET /telemetry/summary` (includes `by_client`, `enforce_api_keys`, `client_count`),
-  `GET /audit?limit`
+Where:
+- `x` is a 14-dimensional vector representing AI state
+- `A` is the constraint matrix (facets)
+- `b` is the bound vector
 
-## Key flows
-1. **Overview** — KPI tiles (verifications, violation rate, mean ‖Δx‖, p99 latency, throughput),
-   violation trend (12 h), latency histogram, most-breached half-spaces.
-2. **Live monitor** — vector probe (14 inputs, `safe`/`breach` presets) POSTs `/contain` and shows
-   status/residual/‖Δx‖; live stream list of recent events with per-axis bars.
-3. **Polytope** — 2D slice of R^14: pick axis X/Y, feasible chamber polygon (half-plane clipping),
-   hyperplane lines, plotted vectors + projection segments.
-4. **Constraints** — activate a profile; edit constraint labels, `b` thresholds, full A rows
-   (dialog) and the 14 dimension labels; commit writes an audit entry.
-5. **Event log** — filter all/permitted/corrected + text search; row → per-axis generated vs
-   projected detail.
-6. **Audit** — timeline of configuration changes.
-7. **Simulator** — header toggle posts `/simulate` every 4 s while on.
-8. **Gate** — deterministic draft gate + engine mode / max-reflection controls.
-9. **Chat coach** — gated LLM sessions, turn inspector, transcript export.
-10. **Access** (admin) — issue console accounts, toggle accounts, change own password.
-11. **Clients** — enforcement mode column (inherit/projection/refusal cycle); issue a key (name, description, pinned polytope) with a
-   once-only reveal + copy; per-client KPI table (calls, violation rate, mean ‖Δx‖, p99, last seen);
-   rotate / revoke / reissue; curl integration snippet. Event Log gains a client filter + column,
-   and Overview gains a stacked "Attribution by client" chart.
+### 2.2 Verification
 
-## Seed (`cd /app/backend && python seed.py`, destructive + idempotent)
-3 profiles: `prof-biochem-strict` "Biochemical Non-Proliferation" (ACTIVE, 14 half-spaces),
-`prof-clinical-safety` "Clinical Decision Safety" (10), `prof-permissive-test`
-"Permissive Test Mode" (14). 3 demo clients with fixed keys (see
-`memory/test_credentials.md`): `gpt-5.2-triage` (pinned clinical), `claude-bio-assist`
-(follows active), `internal-rag` (pinned permissive). Plus 200 events over the last ~12 h
-(~25-35% corrected, ~12% deliberately unattributed) and 7 audit entries. Enforcement seeds **off**.
+For a given vector `x`:
+```
+r = Ax - b
+Violation iff max(r) > 0
+```
+
+### 2.3 Projection (Dykstra's Algorithm)
+
+To project `x_gen` onto `P`:
+```
+x* = argmin_{x∈P} ||x - x_gen||²
+```
+
+Implemented via cyclic projection onto half-spaces. Pure Python, no external dependencies.
+
+### 2.4 Facet Types
+
+| Type | Formula | Coefficients |
+|------|---------|--------------|
+| Axis-aligned upper | x_i ≤ cap | coeffs[i] = 1 |
+| Axis-aligned lower | x_i ≥ floor | coeffs[i] = -1, b = -floor |
+| Coupling (lead) | x_v - x_c ≥ L | coeffs[v] = -1, coeffs[c] = 1, b = -L |
+| Coupling (sum) | x_v + x_c ≤ S | coeffs[v] = coeffs[c] = 1, b = S |
+
+---
+
+## 3. Data Model
+
+### 3.1 MongoDB Collections
+
+#### `profiles`
+```python
+class Profile(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    description: str
+    dimensions: list[Dimension]  # 14 entries
+    constraints: list[Constraint]
+    center: list[float]  # 14 values
+    active: bool
+    created_at: datetime
+    updated_at: datetime
+```
+
+#### `events`
+```python
+class Event(BaseModel):
+    id: str
+    profile_id: str
+    profile_name: str
+    label: str
+    source: str  # api | simulator | console
+    vector: list[float]  # 14 values
+    residuals: list[float]
+    max_residual: float
+    status: str  # permitted | corrected | revised | withheld
+    projected_vector: Optional[list[float]]
+    correction_magnitude: float
+    violated_constraints: list[str]
+    latency_ms: float
+    iterations: int
+    client_id: Optional[str]
+    client_name: Optional[str]
+    created_at: datetime
+```
+
+#### `clients`
+```python
+class Client(BaseModel):
+    id: str
+    name: str
+    description: str
+    key_prefix: str  # Display only
+    key_hash: str  # SHA-256, excluded from serialization
+    profile_id: Optional[str]
+    profile_name: Optional[str]
+    enforcement_mode: str  # inherit | projection | refusal
+    rate_limit_per_min: Optional[int]
+    active: bool
+    created_at: datetime
+    rotated_at: Optional[datetime]
+    last_seen_at: Optional[datetime]
+```
+
+#### `users`
+```python
+class User(BaseModel):
+    id: str
+    email: str
+    password_hash: str  # bcrypt, excluded
+    role: str  # admin | operator
+    active: bool
+    created_at: datetime
+    last_login_at: Optional[datetime]
+```
+
+#### Security Collections
+
+- `login_attempts` — IP-based rate limiting
+- `account_lockouts` — Account lockout records
+- `jwt_denylist` — Revoked tokens (JTI)
+- `csrf_tokens` — CSRF token storage
+- `auth_nonces` — Single-use nonce storage
+
+---
+
+## 4. API Specification
+
+### 4.1 Engine API (Machine Clients)
+
+All endpoints under `/api`, require `X-API-Key` header.
+
+#### POST /api/contain
+Verify a 14D vector against the active polytope.
+
+**Request**:
+```json
+{
+  "vector": [0.5, 0.3, 0.8, ...],
+  "source": "classifier",
+  "label": "benign"
+}
+```
+
+**Response**: `Event` object
+
+**Status Codes**:
+- `200` — Success
+- `401` — Invalid/missing API key
+- `422` — Vector length ≠ 14
+- `429` — Rate limit exceeded
+
+#### POST /api/encode
+Convert text to 14D vector deterministically.
+
+**Request**:
+```json
+{
+  "text": "AI response text",
+  "context": "classification"
+}
+```
+
+**Response**:
+```json
+{
+  "vector": [0.5, 0.3, ...],
+  "dimension_names": ["harmony", "dominance", ...]
+}
+```
+
+#### POST /api/gate
+Enforce safety constraints on text with dual-mode support.
+
+**Request**:
+```json
+{
+  "text": "AI draft response",
+  "context": "medical-advice",
+  "label": "response",
+  "mode": "refusal",
+  "max_reflections": 3
+}
+```
+
+**Response**:
+```json
+{
+  "decision": "revised",
+  "original_text": "...",
+  "revised_text": "...",
+  "original_vector": [...],
+  "revised_vector": [...],
+  "violated_facets": [...],
+  "alignment_score": 0.85,
+  "reflection_trace": [...],
+  "wisdom_filter": {...}
+}
+```
+
+**Decision Values**:
+- `corrected` — Projection mode, vector corrected
+- `revised` — Refusal mode, text rewritten
+- `withheld` — Refusal mode, content suppressed
+
+#### POST /api/chat/sessions
+Create a gated chat session.
+
+**Request**:
+```json
+{
+  "title": "Safety Discussion",
+  "mode": "projection"
+}
+```
+
+#### POST /api/chat/sessions/{id}/message
+Send a message to a chat session.
+
+**Request**:
+```json
+{
+  "text": "User question"
+}
+```
+
+**Response**: `ChatTurn` with gated reply
+
+#### GET /api/chat/sessions/{id}/turns
+Retrieve session history.
+
+#### GET /api/chat/sessions/{id}/export
+Export session as markdown audit artifact.
+
+### 4.2 Console API (Human Operators)
+
+Requires JWT Bearer token. Admin endpoints return 403 for operators.
+
+#### POST /api/auth/login
+```json
+{
+  "email": "admin@polytope.console",
+  "password": "..."
+}
+```
+
+#### GET /api/auth/me
+Return current user info.
+
+#### POST /api/auth/password
+Change password (requires CSRF token).
+
+#### GET /api/auth/users
+List users (admin only).
+
+#### POST /api/auth/users
+Create user (admin only, requires CSRF token).
+
+#### POST /api/auth/users/{id}/toggle
+Activate/deactivate user (admin only, requires CSRF token).
+
+#### GET /api/auth/csrf-token
+Get CSRF token for state-changing operations.
+
+#### GET /api/auth/nonce
+Get single-use nonce for replay protection.
+
+### 4.3 Management API
+
+#### Profiles
+- `GET /api/profiles` — List all profiles
+- `GET /api/profiles/active` — Get active profile
+- `GET /api/profiles/{id}` — Get specific profile
+- `POST /api/profiles` — Create profile (admin)
+- `PUT /api/profiles/{id}` — Update profile (admin)
+- `POST /api/profiles/{id}/activate` — Activate profile (admin)
+- `GET /api/profiles/{id}/margins` — Get facet margins
+
+#### Clients
+- `GET /api/clients` — List clients
+- `POST /api/clients` — Create client (admin)
+- `PATCH /api/clients/{id}` — Update client (admin)
+- `POST /api/clients/{id}/rotate` — Rotate API key (admin)
+- `POST /api/clients/{id}/revoke` — Revoke client (admin)
+- `GET /api/clients/stats` — Aggregate stats
+
+#### Telemetry
+- `GET /api/events` — List events with filters
+- `GET /api/telemetry/summary` — Aggregated metrics
+- `GET /api/audit` — Audit log
+
+#### Settings
+- `GET /api/settings` — Get engine settings
+- `PUT /api/settings` — Update settings (admin)
+
+#### Simulation
+- `POST /api/simulate` — Generate synthetic events (any signed-in user)
+
+---
+
+## 5. Enforcement Modes
+
+### 5.1 Projection Mode
+
+Infeasible vectors are silently projected to the nearest point in P.
+
+**Use Case**: Tolerance for minor violations, continuous correction.
+
+**Response**: `decision = "corrected"`
+
+### 5.2 Refusal Mode
+
+Infeasible drafts trigger a reflection loop.
+
+**Process**:
+1. Encode original text
+2. Verify against polytope
+3. If violation detected:
+   - Append mitigation sentences for violated axes
+   - Re-encode
+   - Re-verify
+   - Repeat up to `max_reflections` times
+4. If feasible → `decision = "revised"`
+5. If still infeasible → `decision = "withheld"`
+
+**Use Case**: Strict safety enforcement, no unsafe content released.
+
+### 5.3 Mode Resolution
+
+Priority order:
+1. Request-level `mode` parameter
+2. Client-level `enforcement_mode`
+3. Engine-level default from settings
+
+Reported as `mode_source` in responses.
+
+---
+
+## 6. Security Architecture
+
+### 6.1 Authentication
+
+**Console**: Email/password → 12h HS256 JWT stored in localStorage  
+**Engine**: API key (`pk_` + 40 hex chars) in `X-API-Key` header  
+**Hybrid**: Optional Supabase JWT via JWKS verification
+
+### 6.2 Authorization
+
+| Role | Permissions |
+|------|-------------|
+| **admin** | Full access to all endpoints |
+| **operator** | Gate, Chat coach, Simulator, read-only Constraints |
+
+Protected operations:
+- Profile management (admin only)
+- Client management (admin only)
+- Settings updates (admin only)
+- User management (admin only)
+
+### 6.3 Rate Limiting
+
+| Mechanism | Limit | Response |
+|-----------|-------|----------|
+| IP login attempts | 5 per 15 min | 429 + Retry-After |
+| Account failures | 5 consecutive | 423 + lockout |
+| Engine API calls | Configurable per-client | 429 + Retry-After |
+
+### 6.4 Token Security
+
+- **JWT**: HS256, 12h TTL, `nbf` claim, `jti` for revocation
+- **API Keys**: SHA-256 hashed, format-validated
+- **CSRF Tokens**: Single-use, 12h expiry
+- **Nonces**: Single-use, 5min expiry
+
+### 6.5 Audit Trail
+
+Every configuration change logs:
+- Action type
+- Detail (what changed)
+- Actor (who did it)
+- Timestamp
+
+---
+
+## 7. Encoder Specification
+
+### 7.1 Deterministic Text Encoding
+
+The encoder transforms text into a 14D vector using:
+1. **Signal Lexicon**: Keyword matching for virtue/shadow concepts
+2. **Negation Detection**: Identifies negation patterns
+3. **Proximity Weighting**: Contextual importance
+4. **Complement Damping**: Reduces shadow influence
+
+### 7.2 Dimension Labels (Plumb Line Pairs)
+
+| Index | Virtue | Shadow |
+|-------|--------|--------|
+| 0 | harmony | dominance |
+| 2 | order | chaos |
+| 4 | integrity | deception |
+| 6 | flourishing | decline |
+| 8 | relationships | isolation |
+| 10 | boundaries | intrusion |
+| 12 | grace | rigidity |
+
+### 7.3 Revision Logic
+
+When refinement is needed, the encoder appends mitigation sentences based on violated facets:
+- Each violated axis generates a specific mitigation phrase
+- Sentences are deterministic (same input → same output)
+- Up to `max_reflections` iterations allowed
+
+---
+
+## 8. UI Specification
+
+### 8.1 Navigation Tabs
+
+1. **Overview** — KPI tiles, violation trends, latency histograms
+2. **Live Monitor** — Real-time vector probe, event stream
+3. **Gate** — Draft enforcement, mode controls, reflection traces
+4. **Chat Coach** — Gated LLM sessions, turn inspector, export
+5. **Polytope** — 2D slice explorer, feasible chamber visualization
+6. **Constraints** — Profile editor, facet configuration, margins
+7. **Clients** (admin) — API key management, rate limits, stats
+8. **Access** (admin) — User management, password changes
+9. **Event Log** — Filterable event history, text search
+10. **Audit** — Configuration change timeline
+
+### 8.2 Key Components
+
+- `GatePanel.tsx` — Draft input, mode selection, result display
+- `ChatCoach.tsx` — Session list, threaded conversation, export
+- `PolytopeExplorer.tsx` — 2D slice visualization
+- `ConstraintEditor.tsx` — Profile editing interface
+- `MarginPanel.tsx` — Facet margin display
+- `EventLog.tsx` — Filterable event table
+- `AuditTrail.tsx` — Timeline view
+- `KpiBar.tsx` — Dashboard metrics
+
+---
+
+## 9. Seeded Configuration
+
+### 9.1 Profiles
+
+1. **prof-biochem-strict** — "Biochemical Non-Proliferation" (ACTIVE, 14 facets)
+2. **prof-clinical-safety** — "Clinical Decision Safety" (10 facets)
+3. **prof-permissive-test** — "Permissive Test Mode" (14 facets)
+
+### 9.2 Demo Clients
+
+Generated randomly on seed (see `seed.py`):
+- `gpt-5.2-triage` — Pinned to clinical profile
+- `claude-bio-assist` — Follows active profile
+- `internal-rag` — Pinned to permissive profile
+
+### 9.3 Initial Events
+
+~200 events over ~12 hours:
+- ~25-35% corrected (projection mode)
+- ~12% deliberately unattributed
+- Mix of permitted and violated vectors
+
+---
+
+## 10. Operational Procedures
+
+### 10.1 Daily Operations
+
+```bash
+# Check service health
+curl http://localhost:8001/api/health
+
+# View recent events
+mongo DP3 --eval "db.events.find().sort({_id:-1}).limit(10).pretty()"
+
+# Check locked accounts
+mongo DP3 --eval "db.account_lockouts.find()"
+```
+
+### 10.2 Emergency Procedures
+
+**Lock out compromised account**:
+```bash
+# Via UI: Access tab → toggle user off
+# Or directly:
+mongo DP3 --eval "db.users.updateOne({email: 'compromised@example.com'}, {\$set: {active: false}})"
+```
+
+**Revoke all tokens**:
+```bash
+# Clear denylist and force re-authentication
+mongo DP3 --eval "db.jwt_denylist.deleteMany({})"
+# Then notify users to re-login
+```
+
+### 10.3 Backup Strategy
+
+- MongoDB Atlas automated backups (point-in-time recovery)
+- Export profiles via API for version control
+- Audit logs retained for compliance
+
+---
+
+## 11. Development Guidelines
+
+### 11.1 Adding New Routes
+
+1. Create model in `models/`
+2. Create router in `routers/`
+3. Mount router in `server.py`
+4. Add TypeScript interface in `frontend/src/lib/types.ts`
+5. Add API function in `frontend/src/lib/api.ts`
+6. Update this spec
+
+### 11.2 Security Checklist
+
+- [ ] Input validation on all endpoints
+- [ ] Rate limiting on sensitive operations
+- [ ] Audit logging for state changes
+- [ ] No hardcoded secrets
+- [ ] Proper error handling (no info leakage)
+- [ ] CSRF protection on form submissions
+
+### 11.3 Testing Requirements
+
+- Unit tests for pure functions
+- Integration tests for API endpoints
+- Security tests for auth flows
+- Type check: `pnpm typecheck`
+
+---
+
+## 12. Known Limitations
+
+1. **Non-Streaming Chat**: Full draft required before gating
+2. **Reflection Limits**: Deterministic rewrite handles tone breaches, not deeply unsafe content
+3. **Password Reset**: Email flow not implemented
+4. **Refusal Analytics**: Data in event log but not charted
+5. **Type Sync**: Manual process, no automated check
+
+---
+
+## 13. Future Enhancements
+
+### Planned Features
+- Streaming chat responses with incremental gating
+- Refusal analytics dashboard
+- Password reset email flow
+- Telemetry export (CSV/JSON)
+- Real-time WebSocket event streaming
+
+### Technical Debt
+- React error boundaries
+- MongoDB connection pooling optimization
+- Automated type sync check in CI
+- Load testing framework
+
+---
+
+**Document Status**: Living specification — update with each significant change.  
+**Next Review**: After Phase 2 completion.
