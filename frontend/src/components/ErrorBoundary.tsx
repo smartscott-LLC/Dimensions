@@ -1,4 +1,4 @@
-import { Component, ReactNode } from "react";
+import { type ReactNode, Component } from 'react';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -14,7 +14,7 @@ interface ErrorBoundaryState {
 /**
  * Error boundary component that catches JavaScript errors in child components.
  * Prevents the entire app from crashing when a component throws.
- * 
+ *
  * Usage:
  * ```tsx
  * <ErrorBoundary fallback={<ErrorFallback />}>
