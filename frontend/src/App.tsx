@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Dashboard from "@/pages/Dashboard";
 import Login from "@/pages/Login";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { ErrorBoundary, ErrorFallback } from "@/components/ErrorBoundary";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -22,17 +23,36 @@ function Protected({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <AuthProvider>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route
-          path="/"
-          element={
-            <Protected>
-              <Dashboard />
-            </Protected>
-          }
-        />
-      </Routes>
+      <ErrorBoundary
+        fallback={
+          <ErrorFallback
+            error={null}
+            onReset={() => window.location.reload()}
+          />
+        }
+      >
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/"
+            element={
+              <Protected>
+                <ErrorBoundary
+                  className="min-h-screen bg-[#030712]"
+                  fallback={
+                    <ErrorFallback
+                      error={null}
+                      onReset={() => window.location.reload()}
+                    />
+                  }
+                >
+                  <Dashboard />
+                </ErrorBoundary>
+              </Protected>
+            }
+          />
+        </Routes>
+      </ErrorBoundary>
     </AuthProvider>
   );
 }

@@ -42,7 +42,7 @@ api_router = APIRouter(prefix="/api")
 
 class HealthStatus(BaseModel):
     status: str
-    database: str
+    database: bool  # Changed from str to bool
     uptime_seconds: float
     timestamp: datetime
 
@@ -51,25 +51,25 @@ class DatabaseStatus(BaseModel):
     latency_ms: float
 
 
-@app.get("/health")
-async def health_check() -> Dict[str, Any]:
+# Add your routes to the router instead of directly to app
+@api_router.get("/health", response_model=HealthStatus)
+async def health_check() -> HealthStatus:
     """Health check endpoint for load balancers and monitoring.
     
     Returns 200 if healthy, 503 if degraded.
     Checks MongoDB connectivity and reports latency.
     """
-    start = datetime.now(timezone.utc)
-    
     # Check MongoDB connectivity
     db_status = DatabaseStatus(connected=False, latency_ms=0)
     try:
         db_ping_start = datetime.now(timezone.utc)
-        await db.admin_command("ping")
+        # Use command() instead of admin_command()
+        result = await db.command("ping")
         db_ping_end = datetime.now(timezone.utc)
         db_latency = (db_ping_end - db_ping_start).total_seconds() * 1000
         
         db_status = DatabaseStatus(
-            connected=True,
+            connected=result.get("ok", 0) == 1,
             latency_ms=round(db_latency, 2)
         )
     except Exception as e:
@@ -83,7 +83,7 @@ async def health_check() -> Dict[str, Any]:
     
     return HealthStatus(
         status=overall_status,
-        database=db_status.connected,  # type: ignore[arg-type]
+        database=db_status.connected,
         uptime_seconds=uptime,
         timestamp=datetime.now(timezone.utc)
     )
@@ -98,16 +98,17 @@ class StatusCheck(BaseModel):
 class StatusCheckCreate(BaseModel):
     client_name: str
 
-# Add your routes to the router instead of directly to app
-@app.get("/readyz")
+@api_router.get("/readyz")
 async def readiness_check() -> Dict[str, Any]:
     """Kubernetes-style readiness probe.
     
     Returns 200 if ready to serve traffic, 503 if not ready.
     """
     try:
-        await db.admin_command("ping")
-        return {"status": "ready"}
+        result = await db.command("ping")
+        if result.get("ok", 0) == 1:
+            return {"status": "ready"}
+        raise HTTPException(status_code=503, detail="ping failed")
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"not ready: {e}")
 

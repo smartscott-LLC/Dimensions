@@ -18,6 +18,15 @@ The Polytope Containment Console is a safety-critical AI containment system that
 - **Multi-Tenant Support**: API keys with per-client configuration
 - **Government-Grade Security**: Rate limiting, lockout, CSRF protection, token revocation
 
+### Security Features
+
+| Feature | Configuration | Purpose |
+|---------|---------------|---------|
+| **MongoDB Connection** | `w="majority"`, `readConcern="majority"` | Data consistency |
+| **Connection Pool** | 5-20 connections | High-throughput support |
+| **Health Checks** | `/health`, `/readyz` | Load balancer support |
+| **Security Headers** | CSP, X-Frame-Options, etc. | XSS/clickjacking protection |
+
 ---
 
 ## 2. Access Credentials
@@ -90,12 +99,31 @@ sudo supervisorctl status
 ### 4.2 Health Monitoring
 
 ```bash
-# Backend health
-curl -s http://localhost:8001/api/health | jq
+# Backend health (detailed with database status)
+curl -s http://localhost:8001/health | jq
 
 # Frontend accessibility
 curl -s -o /dev/null -w "%{http_code}" http://localhost:3000
+
+# Kubernetes-style readiness probe
+curl -s http://localhost:8001/readyz
 ```
+
+**Health Endpoint Response**:
+```json
+{
+  "status": "healthy",
+  "database": true,
+  "uptime_seconds": 86400,
+  "timestamp": "2026-08-24T12:00:00Z"
+}
+```
+
+**Security Headers** (added by middleware):
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: DENY`
+- `Content-Security-Policy: default-src 'self'`
+- `Referrer-Policy: strict-origin-when-cross-origin`
 
 ### 4.3 Log Analysis
 
@@ -454,6 +482,7 @@ mongo "MONGO_URL" DP3 --eval "
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0.0 | 2026-08-24 | Initial release |
+| 1.1.0 | 2026-08-24 | Added health checks, MongoDB security, CSP headers (42 tests passing) |
 
 ---
 

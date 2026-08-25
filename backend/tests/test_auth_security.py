@@ -577,3 +577,61 @@ class TestReDoSHardening:
         # Should still return valid 14D vector
         assert len(result) == 14
         assert all(0.0 <= v <= 1.0 for v in result)
+
+
+class TestErrorBoundaries:
+    """Test React error boundaries."""
+
+    def test_error_boundary_component_exists(self):
+        """ErrorBoundary component should exist."""
+        import os
+        error_boundary_path = os.path.join(
+            os.path.dirname(__file__),
+            "..", "..", "frontend", "src", "components", "ErrorBoundary.tsx"
+        )
+        assert os.path.exists(error_boundary_path), "ErrorBoundary.tsx should exist"
+    
+    def test_error_boundary_imported_in_app(self):
+        """ErrorBoundary should be imported in App.tsx."""
+        import os
+        app_path = os.path.join(
+            os.path.dirname(__file__),
+            "..", "..", "frontend", "src", "App.tsx"
+        )
+        with open(app_path, "r") as f:
+            content = f.read()
+        assert "ErrorBoundary" in content, "App.tsx should import ErrorBoundary"
+        assert "ErrorFallback" in content, "App.tsx should import ErrorFallback"
+
+
+class TestTypeSyncCheck:
+    """Test type sync check script."""
+
+    def test_type_sync_script_exists(self):
+        """Type sync check script should exist."""
+        import os
+        script_path = os.path.join(
+            os.path.dirname(__file__),
+            "..", "..", "backend", "scripts", "type_sync_check.py"
+        )
+        assert os.path.exists(script_path), "type_sync_check.py should exist"
+    
+    def test_type_sync_script_runnable(self):
+        """Type sync check script should be runnable."""
+        import subprocess
+        import os
+        
+        script_path = os.path.join(
+            os.path.dirname(__file__),
+            "..", "..", "backend", "scripts", "type_sync_check.py"
+        )
+        
+        result = subprocess.run(
+            [sys.executable, script_path],
+            capture_output=True,
+            text=True,
+            cwd=os.path.join(os.path.dirname(__file__), "..")
+        )
+        
+        # Should exit with 0 (success) or 1 (drift found)
+        assert result.returncode in (0, 1), f"Script should run without error: {result.stderr}"
