@@ -265,7 +265,10 @@ def demo_clients(now: datetime) -> list[Client]:
     out = []
     for idx, (name, desc, pid, pname) in enumerate(specs):
         # Generate RANDOM key - never hardcoded
-        raw, prefix, hashed = mint_key()
+        import secrets
+        raw = f"pk_{secrets.token_hex(20)}"
+        prefix = raw[:11]
+        hashed = hash_key(raw)
         out.append(
             Client(
                 id=f"client-{name}",

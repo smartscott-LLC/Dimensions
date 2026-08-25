@@ -51,7 +51,7 @@ check_env() {
 cmd_up() {
     check_env || return 1
     echo "Starting Polytope Containment Console..."
-    docker-compose up -d
+    docker compose up -d
     echo -e "${GREEN}[OK]${NC} Services started"
     echo ""
     echo "  Backend:  http://localhost:8001/api/health"
@@ -62,26 +62,26 @@ cmd_up() {
 
 cmd_down() {
     echo "Stopping services..."
-    docker-compose down
+    docker compose down
     echo -e "${GREEN}[OK]${NC} Services stopped"
 }
 
 cmd_restart() {
-    docker-compose restart
+    docker compose restart
     echo -e "${GREEN}[OK]${NC} Services restarted"
 }
 
 cmd_logs() {
     local service="${1:-all}"
     if [ "$service" = "all" ]; then
-        docker-compose logs -f --tail=100
+        docker compose logs -f --tail=100
     else
-        docker-compose logs -f --tail=100 "$service"
+        docker compose logs -f --tail=100 "$service"
     fi
 }
 
 cmd_status() {
-    docker-compose ps
+    docker compose ps
 }
 
 cmd_health() {
@@ -95,31 +95,31 @@ cmd_health() {
     curl -sf http://localhost:3000 > /dev/null && echo -e "${GREEN}OK${NC}" || echo -e "${YELLOW}DOWN${NC}"
     
     echo ""
-    docker-compose ps
+    docker compose ps
 }
 
 cmd_seed() {
     check_env || return 1
     echo "Running seed script..."
-    docker-compose exec -T backend python seed.py
+    docker compose exec -T backend python seed.py
     echo -e "${GREEN}[OK]${NC} Database seeded"
 }
 
 cmd_exec() {
     local service="${1:-backend}"
     shift || true
-    docker-compose exec -it "$service" "$@"
+    docker compose exec -it "$service" "$@"
 }
 
 cmd_build() {
     echo "Building images..."
-    docker-compose build --no-cache
+    docker compose build --no-cache
     echo -e "${GREEN}[OK]${NC} Images built"
 }
 
 cmd_clean() {
     echo "Cleaning up..."
-    docker-compose down -v --remove-orphans
+    docker compose down -v --remove-orphans
     echo -e "${YELLOW}[INFO]${NC} To remove images, run: docker image prune -f"
 }
 
