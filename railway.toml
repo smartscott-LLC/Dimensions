@@ -1,0 +1,32 @@
+# Railway configuration
+# https://railway.app
+
+name: Dimensions Backend
+
+services:
+  - name: backend
+    type: server
+    root: backend
+    build:
+      command: pip install -r requirements.txt
+    deploy:
+      command: uvicorn server:app --host 0.0.0.0 --port $PORT
+    env:
+      - key: PYTHON_VERSION
+        value: 3.12
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        value: DP3
+      - key: JWT_SECRET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_JWKS_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
