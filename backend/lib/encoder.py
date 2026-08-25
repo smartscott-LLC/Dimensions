@@ -135,8 +135,13 @@ def _contributions(
 
 def encode(text: str, context: Optional[str] = None) -> List[float]:
     """Text -> 14D vector. Baseline is DEFAULT_CENTER * 0.85; signals move it."""
-    text_lower = (text or "").lower()
-    context_lower = (context or "").lower()
+    # ReDoS protection: limit input length to prevent catastrophic backtracking
+    MAX_INPUT_LENGTH = 10000
+    text = (text or "")[:MAX_INPUT_LENGTH]
+    context = (context or "")[:MAX_INPUT_LENGTH]
+    
+    text_lower = text.lower()
+    context_lower = context.lower()
     text_words = text_lower.split()
     context_words = context_lower.split()
     effective = max(len(text_words) + len(context_words) * 0.4, 1)

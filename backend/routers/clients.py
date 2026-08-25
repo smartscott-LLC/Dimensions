@@ -42,8 +42,8 @@ def _clean(doc: Dict[str, Any]) -> Dict[str, Any]:
     return doc
 
 
-async def _log_audit(action: str, detail: str) -> None:
-    await db.audit.insert_one(AuditEntry(action=action, detail=detail).model_dump())
+async def _log_audit(action: str, detail: str, actor: str = "system") -> None:
+    await db.audit.insert_one(AuditEntry(action=action, detail=detail, actor=actor).model_dump())
 
 
 async def _profile_name(profile_id: Optional[str]) -> Optional[str]:
@@ -98,7 +98,7 @@ async def write_settings(
     if "max_reflections" in patch:
         notes.append(f"max reflections set to {updated.max_reflections}")
     if notes:
-        await _log_audit("settings.update", "; ".join(notes))
+        await _log_audit("settings.update", "; ".join(notes), _admin.email)
     return updated
 
 
@@ -145,7 +145,7 @@ async def patch_client(
         await db.clients.update_one({"id": client_id}, {"$set": updates})
     client = Client(**_clean(await db.clients.find_one({"id": client_id})))
     if notes:
-        await _log_audit("client.update", f"'{client.name}': {'; '.join(notes)}")
+        await _log_audit("client.update", f"'{client.name}': {'; '.join(notes)}", _admin.email)
     return client
 
 
@@ -177,7 +177,7 @@ async def create_client(
     doc = client.model_dump()
     doc["key_hash"] = hashed  # model_dump excludes it; persist explicitly
     await db.clients.insert_one(doc)
-    await _log_audit("client.create", f"issued API key {prefix}… to '{client.name}'")
+    await _log_audit("client.create", f"issued API key {prefix}… to '{client.name}'", _admin.email)
     return ClientCreated(client=client, api_key=raw)
 
 
@@ -196,7 +196,7 @@ async def rotate_client_key(
         {"$set": {"key_prefix": prefix, "key_hash": hashed, "rotated_at": now, "active": True}},
     )
     refreshed = Client(**_clean(await db.clients.find_one({"id": client_id})))
-    await _log_audit("client.rotate", f"rotated key for '{refreshed.name}' -> {prefix}…")
+    await _log_audit("client.rotate", f"rotated key for '{refreshed.name}' -> {prefix}…", _admin.email)
     return ClientCreated(client=refreshed, api_key=raw)
 
 
@@ -209,7 +209,7 @@ async def revoke_client(
         raise HTTPException(status_code=404, detail="client not found")
     await db.clients.update_one({"id": client_id}, {"$set": {"active": False}})
     client = Client(**_clean(await db.clients.find_one({"id": client_id})))
-    await _log_audit("client.revoke", f"revoked key {client.key_prefix}… for '{client.name}'")
+    await _log_audit("client.revoke", f"revoked key {client.key_prefix}… for '{client.name}'", _admin.email)
     return client
 
 

@@ -263,6 +263,12 @@ async def _generate(
         reply = (response.choices[0].message.content or "").strip()
     except Exception as exc:  # provider/network failure
         raise HTTPException(status_code=502, detail=f"model call failed: {exc}") from exc
+    
+    # Validate draft length to prevent memory issues from excessively long responses
+    MAX_DRAFT_LENGTH = 8000
+    if len(reply) > MAX_DRAFT_LENGTH:
+        reply = reply[:MAX_DRAFT_LENGTH] + "...[truncated due to length]"
+    
     return reply or "(the model returned an empty reply)"
 
 
