@@ -76,7 +76,7 @@ async def _get_consecutive_failures(email: str) -> int:
         "email": email,
         "attempt_type": {"$in": ["failed", "success"]},
     }).sort("created_at", -1).limit(10).to_list(None)
-    
+
     consecutive = 0
     for attempt in recent:
         if attempt.get("attempt_type") == "failed":
@@ -93,15 +93,15 @@ async def _is_account_locked(email: str) -> bool:
     lockout = await db.account_lockouts.find_one({"email": email})
     if not lockout:
         return False
-    
+
     # Check if lockout has expired
     lockout_until = lockout.get("lockout_until")
-    if lockout_until and lockout_until > datetime.now(timezone.utc):
-        return True
-    
-    # Lockout expired, remove it
-    await db.account_lockouts.delete_one({"email": email})
-    return False
+    if lockout_until is not None:
+        # Ensure lockout_until is timezone-aware for comparison
+        if lockout_until.tzinfo is None:
+            lockout_until = lockout_until.replace(tzinfo=timezone.utc)
+        if lockout_until > datetime.now(timezone.utc):
+            return True
 
 
 async def _lock_account(email: str, hours: int = ACCOUNT_LOCKOUT_HOURS) -> None:
@@ -129,7 +129,7 @@ async def login(
     # Rate limiting check
     client_ip = request.client.host if request.client else "unknown"
     email = payload.email.lower()
-    
+
     # Check if IP is locked out
     failed_count = await _get_failed_attempts(client_ip)
     if failed_count >= MAX_LOGIN_ATTEMPTS:
@@ -140,7 +140,7 @@ async def login(
             detail=f"too many failed attempts from this IP; retry after {retry_after} seconds",
             headers={"Retry-After": str(retry_after)},
         )
-    
+
     # Check if account is locked out
     if await _is_account_locked(email):
         raise HTTPException(
@@ -152,7 +152,7 @@ async def login(
     if not doc or not verify_password(payload.password, doc.get("password_hash", "")):
         # Record failed attempt with email for account lockout tracking
         await _record_login_attempt(client_ip, success=False, email=email)
-        
+
         # Check consecutive failures for account lockout
         consecutive_failures = await _get_consecutive_failures(email)
         if consecutive_failures >= MAX_ACCOUNT_FAILURES:
@@ -162,15 +162,15 @@ async def login(
                 status_code=423,
                 detail=f"account locked due to {MAX_ACCOUNT_FAILURES} consecutive failed attempts",
             )
-        
+
         # Cleanup old attempts periodically
         await _cleanup_old_attempts()
         raise HTTPException(status_code=401, detail="invalid email or password")
-    
+
     # Record successful attempt and cleanup
     await _record_login_attempt(client_ip, success=True, email=email)
     await _cleanup_old_attempts()
-    
+
     user = User(**_clean(doc))
     if not user.active:
         raise HTTPException(status_code=403, detail="account deactivated")
@@ -198,12 +198,12 @@ async def change_password(
     csrf_token = await get_csrf_token(request, user.id) if request else None
     if not csrf_token or not await validate_csrf_token(csrf_token, user.id):
         raise HTTPException(status_code=403, detail="CSRF token missing or invalid")
-    
+
     # Nonce validation for replay protection
     nonce = request.headers.get("X-Auth-Nonce") if request else None
     if not nonce or not await validate_nonce(nonce, user.id):
         raise HTTPException(status_code=403, detail="Nonce missing or invalid")
-    
+
     doc = await db.users.find_one({"id": user.id})
     if not doc or not verify_password(payload.current_password, doc.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="current password is incorrect")
@@ -255,12 +255,12 @@ async def create_user(
     csrf_token = await get_csrf_token(request, admin.id) if request else None
     if not csrf_token or not await validate_csrf_token(csrf_token, admin.id):
         raise HTTPException(status_code=403, detail="CSRF token missing or invalid")
-    
+
     # Nonce validation for replay protection
     nonce = request.headers.get("X-Auth-Nonce") if request else None
     if not nonce or not await validate_nonce(nonce, admin.id):
         raise HTTPException(status_code=403, detail="Nonce missing or invalid")
-    
+
     if payload.role not in ROLES:
         raise HTTPException(status_code=422, detail="role must be admin|operator")
     email = payload.email.lower()
@@ -291,12 +291,12 @@ async def toggle_user(
     csrf_token = await get_csrf_token(request, admin.id) if request else None
     if not csrf_token or not await validate_csrf_token(csrf_token, admin.id):
         raise HTTPException(status_code=403, detail="CSRF token missing or invalid")
-    
+
     # Nonce validation for replay protection
     nonce = request.headers.get("X-Auth-Nonce") if request else None
     if not nonce or not await validate_nonce(nonce, admin.id):
         raise HTTPException(status_code=403, detail="Nonce missing or invalid")
-    
+
     doc = await db.users.find_one({"id": user_id})
     if not doc:
         raise HTTPException(status_code=404, detail="account not found")

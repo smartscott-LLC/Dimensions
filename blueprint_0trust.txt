@@ -1,0 +1,14 @@
+┌─────────────────────────────────────────────────────────────┐
+│ LAYER 3: Industry Overlay (Tenant / Vertical Configuration)  │
+│          • Domain-specific trigger words & jargon           │
+│          • Custom weighting & sector thresholds             │
+├─────────────────────────────────────────────────────────────┤
+│ LAYER 2: The Enforcement Clamp (Mathematical Governor)       │
+│          • Intercepts overlay parameters                    │
+│          • Automatically bounds-checks tenant overrides     │
+├─────────────────────────────────────────────────────────────┤
+│ LAYER 1: The Immutable Core (Hardcoded Invariants)          │
+│          • Baseline semantic honesty & truthfulness         │
+│          • Core geometric polytope bounds (Ax ≤ b)          │
+│          • Hard security invariants (non-negotiable)        │
+└─────────────────────────────────────────────────────────────┘

@@ -1,0 +1,54 @@
+name: Production Stress Gate
+
+on:
+  push:
+    branches: [ main, production ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  fuzz-and-stress:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install aiohttp pytest
+
+      - name: Spin Up Local Test Service Container
+        run: |
+          docker compose -f docker-compose.test.yml up -d
+          # Wait for health check
+          python -c "
+          import urllib.request, time
+          for _ in range(30):
+              try:
+                  urllib.request.urlopen('http://localhost:8000/health')
+                  break
+              except Exception:
+                  time.sleep(1)
+          else:
+              exit(1)
+          "
+
+      - name: Execute High-Volume Stress Harness
+        env:
+          TARGET_URL: "http://localhost:8000/v1/evaluate"
+          API_KEY: ${{ secrets.TEST_API_KEY }}
+          TOTAL_ATTEMPTS: 10000  # Scaled for CI execution time; run 100k offline
+          CONCURRENCY: 50
+        run: |
+          python scripts/stress_harness.py
+
+      - name: Teardown Test Container
+        if: always()
+        run: docker compose -f docker-compose.test.yml down
