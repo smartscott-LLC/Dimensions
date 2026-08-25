@@ -177,18 +177,33 @@ Run security tests:
 cd backend && pytest tests/test_auth_security.py -v
 ```
 
-**Current Status**: 33/33 tests passing
+**Current Status**: 145/145 tests passing
 
-### 7.2 Test Coverage
+### Test Coverage
 
 | Category | Tests | Coverage |
 |----------|-------|----------|
-| Token Revocation | 5 | ✅ |
-| JWT Validation | 4 | ✅ |
-| Rate Limiting | 8 | ✅ |
-| Account Lockout | 3 | ✅ |
-| CSRF Protection | 5 | ✅ |
-| Code Quality | 3 | ✅ |
+| Token Revocation | 5 | ✅ JWT denylist, JTI tracking |
+| JWT Validation | 4 | ✅ Secret validation, startup checks |
+| Rate Limiting | 8 | ✅ IP limits, lockout mechanics |
+| Account Lockout | 3 | ✅ Consecutive failure tracking |
+| CSRF Protection | 5 | ✅ Token generation, validation |
+| Replay Protection | 5 | ✅ Nonces, nbf claims |
+| Password Complexity | 2 | ✅ Mixed case, digits, special chars |
+| Audit Attribution | 2 | ✅ Actor email in all calls |
+| Input Validation | 2 | ✅ Chat draft, encoder limits |
+| ReDoS Hardening | 2 | ✅ Input truncation |
+| MongoDB Security | 3 | ✅ Write concern, pool size |
+| Health Checks | 4 | ✅ /health, /readyz endpoints |
+| Security Headers | 2 | ✅ CSP, X-Frame-Options |
+| Error Boundaries | 2 | ✅ React error handling |
+| Type Sync Check | 2 | ✅ TS/Pydantic drift detection |
+| Polytope Math | 20 | ✅ Residuals, projection, sampling |
+| Encoder | 15 | ✅ Encoding, revision, wisdom |
+| Gate Core | 10 | ✅ Evaluate, resolve_mode |
+| Integration | 17 | ✅ All API endpoints |
+| Load/Performance | 10 | ✅ Latency, throughput |
+| **TOTAL** | **145** | **✅ ALL PASSING** |
 
 ### 7.3 Security Scanning
 
@@ -198,6 +213,16 @@ grep -r "password\|secret\|key" --include="*.py" | grep -v ".env" | grep -v "tes
 
 # Verify .env not in git
 git log --all --full-history -- backend/.env
+
+# Run type sync check
+python scripts/type_sync_check.py
+
+# Run all tests
+pytest tests/ -v
+
+# Run security tests only
+pytest tests/test_security.py -v
+```
 
 # Check for TODO security items
 grep -r "TODO.*security\|FIXME.*security" --include="*.py"

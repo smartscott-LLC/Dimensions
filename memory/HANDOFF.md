@@ -1,6 +1,6 @@
 # Polytope Containment Console — Operational Handoff
 
-**Document Version**: 1.0.0  
+**Document Version**: 1.1.0  
 **Last Updated**: 2026-08-24  
 **Classification**: Internal Use Only
 
@@ -17,15 +17,23 @@ The Polytope Containment Console is a safety-critical AI containment system that
 - **Comprehensive Audit Trail**: Every decision logged with full traceability
 - **Multi-Tenant Support**: API keys with per-client configuration
 - **Government-Grade Security**: Rate limiting, lockout, CSRF protection, token revocation
+- **Health Monitoring**: `/api/health` and `/api/readyz` endpoints
+- **Error Boundaries**: React error handling prevents app crashes
+- **Type Sync Checking**: Automated TS/Pydantic drift detection
 
 ### Security Features
 
 | Feature | Configuration | Purpose |
 |---------|---------------|---------|
-| **MongoDB Connection** | `w="majority"`, `readConcern="majority"` | Data consistency |
+| **MongoDB Connection** | `w="majority"`, pool 5-20 | Data consistency |
 | **Connection Pool** | 5-20 connections | High-throughput support |
-| **Health Checks** | `/health`, `/readyz` | Load balancer support |
+| **Health Checks** | `/api/health`, `/api/readyz` | Load balancer support |
 | **Security Headers** | CSP, X-Frame-Options, etc. | XSS/clickjacking protection |
+| **Password Policy** | 12+ chars, mixed case, digit, special | Strong authentication |
+| **Rate Limiting** | 5 attempts/15min, 5 failures→1hr lockout | Brute force prevention |
+| **Token Revocation** | MongoDB denylist with JTI | Immediate session invalidation |
+| **CSRF Protection** | Single-use tokens, 12h expiry | Cross-site request forgery prevention |
+| **Replay Protection** | Nonces, 5min expiry, nbf claims | Token replay prevention |
 
 ---
 
@@ -38,7 +46,7 @@ The Polytope Containment Console is a safety-critical AI containment system that
 | Admin | `admin@polytope.console` | `Prussian#42Blue` | Full system access |
 | Operator | `ops@polytope.console` | `Khaki#514Ops` | Gate, Chat, Simulator, read-only Constraints |
 
-**⚠️ SECURITY REQUIREMENT**: Change these passwords immediately upon first login.
+**⚠️ SECURITY REQUIREMENT**: Change these passwords immediately upon first login. Passwords must meet complexity requirements: 12+ characters, uppercase, lowercase, digit, and special character.
 
 ### Demo API Keys
 
