@@ -28,7 +28,7 @@ COPY frontend/package.json frontend/pnpm-lock.yaml ./frontend/
 RUN corepack enable && corepack prepare pnpm@latest --activate
 RUN cd frontend && pnpm install --frozen-lockfile
 COPY frontend/ ./frontend/
-RUN cd frontend && pnpm build
+RUN cd frontend && pnpm run dev
 
 # Copy nginx configuration
 COPY nginx.single-container.conf /etc/nginx/conf.d/default.conf
