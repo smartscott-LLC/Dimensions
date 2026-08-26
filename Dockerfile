@@ -28,10 +28,18 @@ COPY frontend/package.json frontend/pnpm-lock.yaml ./frontend/
 RUN corepack enable && corepack prepare pnpm@latest --activate
 RUN cd frontend && pnpm install --frozen-lockfile
 COPY frontend/ ./frontend/
-RUN cd frontend && pnpm run dev
+RUN cd frontend && pnpm build
 
-# Copy nginx configuration
-COPY nginx.single-container.conf /etc/nginx/conf.d/default.conf
+FROM nginx:alpine
+
+# Remove the default Nginx static assets if you aren't using them
+RUN rm -rf /usr/share/nginx/html/*
+
+# Copy your custom configuration directly to overwrite the default
+COPY default.conf /etc/nginx/conf.d/default.conf
+
+# Copy your website files
+COPY . /usr/share/nginx/html
 
 # Copy supervisor configuration
 RUN cat > /etc/supervisor/conf.d/app.conf << 'EOF'
