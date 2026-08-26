@@ -30,7 +30,9 @@ RUN cd frontend && pnpm install --frozen-lockfile
 COPY frontend/ ./frontend/
 RUN cd frontend && pnpm build
 
-FROM nginx:alpine
+FROM nginx:alpine AS serving
+
+COPY nginx.app.conf /etc/nginx/sites-available/default
 
 # Remove the default Nginx static assets if you aren't using them
 RUN rm -rf /usr/share/nginx/html/*
