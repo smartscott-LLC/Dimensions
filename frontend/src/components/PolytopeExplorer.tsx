@@ -220,7 +220,7 @@ export default function PolytopeExplorer({ profile, events }: Props) {
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h3 className="flex items-center gap-2 font-heading text-sm text-[#F8FAFC]">
-            <Boxes className="size-4 text-[#D4AF37]" /> Polytope explorer — 2D slice of R
+            <Boxes className="size-4 text-gold" /> Polytope explorer — 2D slice of R
             <sup>14</sup>
           </h3>
           <p className="label-mono mt-1 text-[#64748B]">
@@ -287,7 +287,7 @@ export default function PolytopeExplorer({ profile, events }: Props) {
                 ref={svgRef}
                 viewBox={`0 0 ${SIZE} ${SIZE}`}
                 preserveAspectRatio="xMidYMid meet"
-                className="block h-[460px] w-full cursor-grab"
+                className="block h-115 w-full cursor-grab"
                 style={{ cursor: isPanningRef.current ? "grabbing" : "grab" }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
@@ -435,11 +435,11 @@ export default function PolytopeExplorer({ profile, events }: Props) {
           <div className="border border-[#1E293B] bg-[#030712] p-3">
             <p className="label-mono text-[#64748B]">Legend</p>
             <ul className="mt-2 space-y-1.5 font-mono text-[11px] text-[#CBD5E1]">
-              <li><span className="mr-2 inline-block size-2 bg-[#10B981]" />permitted vector</li>
-              <li><span className="mr-2 inline-block size-2 bg-[#EF4444]" />violating vector</li>
-              <li><span className="mr-2 inline-block size-2 bg-[#D4AF37]" />projected point</li>
-              <li><span className="mr-2 inline-block h-0.5 w-4 bg-[#D4AF37] align-middle" />hyperplane a·x = b</li>
-              <li><span className="mr-2 inline-block size-2 bg-[#10B981]/30" />feasible chamber</li>
+              <li><span className="mr-2 inline-block size-2 bg-pass" />permitted vector</li>
+              <li><span className="mr-2 inline-block size-2 bg-violation" />violating vector</li>
+              <li><span className="mr-2 inline-block size-2 bg-gold" />projected point</li>
+              <li><span className="mr-2 inline-block h-0.5 w-4 bg-gold align-middle" />hyperplane a·x = b</li>
+              <li><span className="mr-2 inline-block size-2 bg-pass/30" />feasible chamber</li>
             </ul>
           </div>
           <div className="border border-[#1E293B] bg-[#030712] p-3" data-testid="slice-constraints">
