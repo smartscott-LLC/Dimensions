@@ -1,0 +1,88 @@
+# SnapDeploy Configuration for Polytope Containment Console
+# https://snapdeploy.io
+
+name: dimensions
+runtime: docker
+
+# Build configuration
+build:
+  dockerfile: Dockerfile.backend
+  context: .
+  
+# Services configuration
+services:
+  backend:
+    image: dimensions-backend
+    build:
+      dockerfile: Dockerfile.backend
+      context: .
+    ports:
+      - 8001
+    env:
+      - MONGO_URL=${MONGO_URL}
+      - DB_NAME=${DB_NAME:-DP3}
+      - JWT_SECRET=${JWT_SECRET}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - MODEL_API_KEY=${MODEL_API_KEY}
+      - MODEL_API_URL=${MODEL_API_URL}
+      - MODEL_NAME=${MODEL_NAME:-agnes-2.5-flash}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_JWKS_URL=${SUPABASE_JWKS_URL}
+      - SUPABASE_SECRET_KEY=${SUPABASE_SECRET_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+    health_check:
+      url: http://localhost:8001/api/health
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart_policy: unless-stopped
+    resources:
+      cpu: 500m
+      memory: 512Mi
+
+  frontend:
+    image: dimensions-frontend
+    build:
+      dockerfile: Dockerfile.frontend.snapdeploy
+      context: .
+    ports:
+      - 3000:80
+    environment:
+      - BACKEND_URL=http://localhost:8001
+    depends_on:
+      - backend
+    health_check:
+      url: http://localhost:80/health
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart_policy: unless-stopped
+    resources:
+      cpu: 250m
+      memory: 256Mi
+
+# Environment variables (set these in SnapDeploy dashboard)
+# Required:
+#   MONGO_URL - MongoDB Atlas connection string
+#   JWT_SECRET - 64-character hex secret
+#   ADMIN_EMAIL - Admin email
+#   ADMIN_PASSWORD - Admin password
+#   MODEL_API_KEY - OpenAI-compatible API key
+#   MODEL_API_URL - Model API endpoint
+# Optional:
+#   SUPABASE_URL, SUPABASE_JWKS_URL, SUPABASE_SECRET_KEY
+#   CORS_ORIGINS - Comma-separated allowed origins
+
+# Routes
+routes:
+  - path: /api/*
+    service: backend
+  - path: /*
+    service: frontend
+
+# Scaling (optional)
+scaling:
+  min_instances: 1
+  max_instances: 3
+  target_cpu_utilization: 75

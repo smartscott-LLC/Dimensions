@@ -1,0 +1,13 @@
+@.zed/agent.md @.zed/zed_instructions.md @memory/SPEC.md Goal: To create a single deployable container that brings up both the front and back ends using one Dockerfile for both ends and the accompanying docker compose file. Use one of these 2 options provided --> 1. The Simplest Alternative: Caddy
+Caddy is widely considered the modern, easier alternative to Nginx for Docker. 
+
+Why it helps: It automatically handles HTTPS and has a much simpler configuration syntax (Caddyfile). It often requires zero config to serve static files and reverse proxy a backend. 
+Docker usage: You can often replace your entire Nginx config block with just two lines in a Caddyfile. 
+2. The "Single Process" Approach: Serve Frontend via Backend
+Instead of running Nginx and your backend (e.g., Node, Python, Go) as two separate processes managed by Supervisor in one container, let your backend serve the frontend. 
+
+How it works:
+Build your frontend (React/Vue) into static files (dist/ folder).
+Copy these files into your backend's public directory (e.g., ./public or ./static).
+Configure your backend code (Express, Django, Flask) to serve these static files.
+Benefit: You only need one process (your backend).  No Nginx, no Supervisor, no sw.js path mismatches between two servers. thank you

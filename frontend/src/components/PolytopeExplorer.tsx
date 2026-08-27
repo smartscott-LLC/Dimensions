@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useCallback } from "react";
 import { Boxes } from "lucide-react";
 import {
   Select,
@@ -18,6 +18,23 @@ type Pt = { x: number; y: number };
 
 const PAD = 46;
 const SIZE = 460;
+const MIN_ZOOM = 0.2;
+const MAX_ZOOM = 10;
+const ZOOM_FACTOR = 1.08;
+
+function clientToSvg(
+  svgEl: SVGSVGElement,
+  clientX: number,
+  clientY: number,
+): { x: number; y: number } {
+  const pt = svgEl.createSVGPoint();
+  pt.x = clientX;
+  pt.y = clientY;
+  const ctm = svgEl.getScreenCTM();
+  if (!ctm) return { x: clientX, y: clientY };
+  const svgPt = pt.matrixTransform(ctm.inverse());
+  return { x: svgPt.x, y: svgPt.y };
+}
 
 /** Trims binary floating-point noise: 0.30000000000000004 -> "0.3" */
 const fmt = (v: number) => String(Number(v.toFixed(6)));
@@ -46,6 +63,88 @@ export default function PolytopeExplorer({ profile, events }: Props) {
   const ix = Number(xi);
   const iy = Number(yi);
 
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [viewOrigin, setViewOrigin] = useState<[number, number]>([0, 0]);
+  const [zoom, setZoom] = useState(1);
+  const isPanningRef = useRef(false);
+  const lastMouseRef = useRef<{ x: number; y: number } | null>(null);
+
+  const resetView = useCallback(() => {
+    setViewOrigin([0, 0]);
+    setZoom(1);
+  }, []);
+
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent<SVGSVGElement>) => {
+      if (e.button !== 0) return;
+      isPanningRef.current = true;
+      lastMouseRef.current = { x: e.clientX, y: e.clientY };
+    },
+    [],
+  );
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<SVGSVGElement>) => {
+      if (!isPanningRef.current || !lastMouseRef.current) return;
+      const dx = e.clientX - lastMouseRef.current.x;
+      const dy = e.clientY - lastMouseRef.current.y;
+      lastMouseRef.current = { x: e.clientX, y: e.clientY };
+      setViewOrigin((prev) => [prev[0] - dx / zoom, prev[1] - dy / zoom]);
+    },
+    [zoom],
+  );
+
+  const handleMouseUp = useCallback(() => {
+    isPanningRef.current = false;
+    lastMouseRef.current = null;
+  }, []);
+
+  const handleWheel = useCallback(
+    (e: React.WheelEvent<SVGSVGElement>) => {
+      e.preventDefault();
+      const svgEl = svgRef.current;
+      if (!svgEl) return;
+
+      const fwd = clientToSvg(svgEl, e.clientX, e.clientY);
+      const factor = e.deltaY < 0 ? ZOOM_FACTOR : 1 / ZOOM_FACTOR;
+      const nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * factor));
+      const actualFactor = nextZoom / zoom;
+
+      const newOrigin: [number, number] = [
+        fwd.x - actualFactor * (fwd.x - viewOrigin[0]),
+        fwd.y - actualFactor * (fwd.y - viewOrigin[1]),
+      ];
+
+      setZoom(nextZoom);
+      setViewOrigin(newOrigin);
+    },
+    [zoom, viewOrigin],
+  );
+
+  const zoomIn = useCallback(() => {
+    const cx = SIZE / 2;
+    const cy = SIZE / 2;
+    const nextZoom = Math.min(MAX_ZOOM, zoom * ZOOM_FACTOR);
+    const factor = nextZoom / zoom;
+    setViewOrigin([
+      cx - factor * (cx - viewOrigin[0]),
+      cy - factor * (cy - viewOrigin[1]),
+    ]);
+    setZoom(nextZoom);
+  }, [zoom, viewOrigin]);
+
+  const zoomOut = useCallback(() => {
+    const cx = SIZE / 2;
+    const cy = SIZE / 2;
+    const nextZoom = Math.max(MIN_ZOOM, zoom / ZOOM_FACTOR);
+    const factor = nextZoom / zoom;
+    setViewOrigin([
+      cx - factor * (cx - viewOrigin[0]),
+      cy - factor * (cy - viewOrigin[1]),
+    ]);
+    setZoom(nextZoom);
+  }, [zoom, viewOrigin]);
+
   const dims = profile?.dimensions ?? [];
   const dimX = dims[ix];
   const dimY = dims[iy];
@@ -61,10 +160,21 @@ export default function PolytopeExplorer({ profile, events }: Props) {
     };
   }, [dimX, dimY]);
 
+  // Base coordinate mappers (no pan/zoom)
   const sx = (v: number) =>
     PAD + ((v - domain.x0) / (domain.x1 - domain.x0)) * (SIZE - PAD * 2);
   const sy = (v: number) =>
     SIZE - PAD - ((v - domain.y0) / (domain.y1 - domain.y0)) * (SIZE - PAD * 2);
+
+  // Pan/zoom-aware coordinate mappers
+  const sxz = useCallback(
+    (v: number) => (sx(v) - viewOrigin[0]) * zoom,
+    [sx, viewOrigin, zoom],
+  );
+  const syz = useCallback(
+    (v: number) => (sy(v) - viewOrigin[1]) * zoom,
+    [sy, viewOrigin, zoom],
+  );
 
   const slice = useMemo(() => {
     if (!profile) return [];
@@ -172,16 +282,25 @@ export default function PolytopeExplorer({ profile, events }: Props) {
       <div className="grid gap-4 lg:grid-cols-12">
         <div className="lg:col-span-8">
           <div className="grid-etch border border-[#1E293B] bg-[#030712]">
-            <svg
-              viewBox={`0 0 ${SIZE} ${SIZE}`}
-              preserveAspectRatio="xMidYMid meet"
-              className="block h-[460px] w-full"
-              role="img"
-              aria-label="polytope slice"
-            >
+          <div className="relative">
+              <svg
+                ref={svgRef}
+                viewBox={`0 0 ${SIZE} ${SIZE}`}
+                preserveAspectRatio="xMidYMid meet"
+                className="block h-[460px] w-full cursor-grab"
+                style={{ cursor: isPanningRef.current ? "grabbing" : "grab" }}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                onWheel={handleWheel}
+                role="img"
+                aria-label="polytope slice"
+              >
+                <g transform={`translate(${viewOrigin[0]}, ${viewOrigin[1]}) scale(${zoom})`}>
               {region.length > 2 && (
                 <polygon
-                  points={region.map((p) => `${sx(p.x)},${sy(p.y)}`).join(" ")}
+                  points={region.map((p) => `${sxz(p.x)},${syz(p.y)}`).join(" ")}
                   fill="#10B981"
                   fillOpacity={0.13}
                   stroke="#10B981"
@@ -211,10 +330,10 @@ export default function PolytopeExplorer({ profile, events }: Props) {
                 return (
                   <line
                     key={c.label}
-                    x1={sx(inside[0].x)}
-                    y1={sy(inside[0].y)}
-                    x2={sx(inside[1].x)}
-                    y2={sy(inside[1].y)}
+                    x1={sxz(inside[0].x)}
+                    y1={syz(inside[0].y)}
+                    x2={sxz(inside[1].x)}
+                    y2={syz(inside[1].y)}
                     stroke="#D4AF37"
                     strokeWidth={1}
                     strokeDasharray="4 4"
@@ -231,25 +350,25 @@ export default function PolytopeExplorer({ profile, events }: Props) {
                   <g key={ev.id} data-testid={`slice-point-${ev.id}`}>
                     {proj && (
                       <line
-                        x1={sx(px)}
-                        y1={sy(py)}
-                        x2={sx(proj[ix] ?? 0)}
-                        y2={sy(proj[iy] ?? 0)}
+                        x1={sxz(px)}
+                        y1={syz(py)}
+                        x2={sxz(proj[ix] ?? 0)}
+                        y2={syz(proj[iy] ?? 0)}
                         stroke="#F59E0B"
                         strokeWidth={0.8}
                       />
                     )}
                     <circle
-                      cx={sx(px)}
-                      cy={sy(py)}
+                      cx={sxz(px)}
+                      cy={syz(py)}
                       r={3}
                       fill={ev.status === "permitted" ? "#10B981" : "#EF4444"}
                       fillOpacity={0.9}
                     />
                     {proj && (
                       <circle
-                        cx={sx(proj[ix] ?? 0)}
-                        cy={sy(proj[iy] ?? 0)}
+                        cx={sxz(proj[ix] ?? 0)}
+                        cy={syz(proj[iy] ?? 0)}
                         r={2.5}
                         fill="#D4AF37"
                       />
@@ -258,6 +377,7 @@ export default function PolytopeExplorer({ profile, events }: Props) {
                 );
               })}
 
+              {/* Axes */}
               <line x1={PAD} y1={SIZE - PAD} x2={SIZE - PAD} y2={SIZE - PAD} stroke="#334155" />
               <line x1={PAD} y1={PAD} x2={PAD} y2={SIZE - PAD} stroke="#334155" />
               <text x={SIZE / 2} y={SIZE - 12} fill="#94A3B8" fontSize={11} textAnchor="middle" fontFamily="IBM Plex Mono">
@@ -274,7 +394,40 @@ export default function PolytopeExplorer({ profile, events }: Props) {
               >
                 {`x${iy + 1} · ${dimY?.label ?? "—"}`}
               </text>
-            </svg>
+            </g>
+              </svg>
+
+              <div className="absolute bottom-2 right-2 flex flex-col gap-1">
+                <button
+                  onClick={zoomIn}
+                  className="grid-etch size-7 flex items-center justify-center text-[#94A3B8] hover:text-[#F8FAFC] rounded text-xs font-mono transition-colors"
+                  aria-label="zoom in"
+                  title="Zoom in"
+                >
+                  +
+                </button>
+                <button
+                  onClick={zoomOut}
+                  className="grid-etch size-7 flex items-center justify-center text-[#94A3B8] hover:text-[#F8FAFC] rounded text-xs font-mono transition-colors"
+                  aria-label="zoom out"
+                  title="Zoom out"
+                >
+                  −
+                </button>
+                <button
+                  onClick={resetView}
+                  className="grid-etch size-7 flex items-center justify-center text-[#94A3B8] hover:text-[#F8FAFC] rounded text-xs font-mono transition-colors"
+                  aria-label="reset view"
+                  title="Reset view"
+                >
+                  ⟲
+                </button>
+              </div>
+              {/* Zoom indicator */}
+              <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-[#030712]/80 text-[10px] font-mono text-[#64748B]">
+                {Math.round(zoom * 100)}%
+              </div>
+            </div>
           </div>
         </div>
 

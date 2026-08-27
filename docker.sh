@@ -22,7 +22,7 @@ usage() {
     echo "  up              Start all services in detached mode"
     echo "  down            Stop all services"
     echo "  restart         Restart all services"
-    echo "  logs [service]  Show logs (optional: backend|frontend|all)"
+    echo "  logs [service]  Show logs (optional: app|all)"
     echo "  status          Show service status"
     echo "  health          Check health of all services"
     echo "  seed            Run seed.py to populate database"
@@ -32,8 +32,8 @@ usage() {
     echo ""
     echo "Examples:"
     echo "  $0 up"
-    echo "  $0 logs backend"
-    echo "  $0 exec backend python -c 'import lib.polytope; print(lib.polytope.DIMENSIONS)'"
+    echo "  $0 logs app"
+    echo "  $0 exec app python -c 'import lib.polytope; print(lib.polytope.DIMENSIONS)'"
 }
 
 check_env() {
@@ -51,11 +51,11 @@ check_env() {
 cmd_up() {
     check_env || return 1
     echo "Starting Polytope Containment Console..."
-    docker compose up -d
-    echo -e "${GREEN}[OK]${NC} Services started"
+    docker compose up -d --build
+    echo -e "${GREEN}[OK]${NC} Service started"
     echo ""
-    echo "  Backend:  http://localhost:8001/api/health"
-    echo "  Frontend: http://localhost:3000"
+    echo "  App:        http://localhost:8001"
+    echo "  API Docs:   http://localhost:8001/docs"
     echo ""
     echo "Use '$0 logs' to view logs"
 }
@@ -87,13 +87,18 @@ cmd_status() {
 cmd_health() {
     echo "Checking service health..."
     echo ""
-    
-    echo -n "Backend health:  "
+
+    echo -n "Health:      "
     curl -sf http://localhost:8001/api/health | grep -q '"status":"healthy"' && echo -e "${GREEN}OK${NC}" || echo -e "${YELLOW}DEGRADED${NC}"
-    
-    echo -n "Frontend:        "
-    curl -sf http://localhost:3000 > /dev/null && echo -e "${GREEN}OK${NC}" || echo -e "${YELLOW}DOWN${NC}"
-    
+
+    echo -n "MongoDB:     "
+    MONGO_STATUS=$(curl -sf http://localhost:8001/api/health 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print('OK' if d.get('database') else 'DOWN')" 2>/dev/null) || MONGO_STATUS="DOWN"
+    if [ "$MONGO_STATUS" = "OK" ]; then
+        echo -e "${GREEN}OK${NC}"
+    else
+        echo -e "${YELLOW}${MONGO_STATUS}${NC}"
+    fi
+
     echo ""
     docker compose ps
 }
@@ -101,12 +106,12 @@ cmd_health() {
 cmd_seed() {
     check_env || return 1
     echo "Running seed script..."
-    docker compose exec -T backend python seed.py
+    docker compose exec -T app python seed.py
     echo -e "${GREEN}[OK]${NC} Database seeded"
 }
 
 cmd_exec() {
-    local service="${1:-backend}"
+    local service="${1:-app}"
     shift || true
     docker compose exec -it "$service" "$@"
 }

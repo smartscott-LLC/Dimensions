@@ -26,11 +26,11 @@ ls -la backend/.env
 ### 2. Start Services
 
 ```bash
-# Build and start all services
+# Build and start the single container
 ./docker.sh up
 
 # Or using docker-compose directly
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 ### 3. Verify Installation
@@ -50,9 +50,9 @@ docker-compose up -d --build
 
 | Service | URL |
 |---------|-----|
-| Frontend | http://localhost:3000 |
-| Backend API | http://localhost:8001/api/health |
+| Frontend + Backend | http://localhost:8001 |
 | API Docs | http://localhost:8001/docs |
+| Health Check | http://localhost:8001/api/health |
 
 ## Default Credentials
 
@@ -66,9 +66,8 @@ docker-compose up -d --build
 
 ```bash
 # View logs
-./docker.sh logs backend    # Backend logs
-./docker.sh logs frontend   # Frontend logs
-./docker.sh logs            # All logs
+./docker.sh logs app    # App logs
+./docker.sh logs        # All logs
 
 # Restart services
 ./docker.sh restart
@@ -84,80 +83,38 @@ docker-compose up -d --build
 ./docker.sh seed
 
 # Execute commands in container
-./docker.sh exec backend python -c "import lib.polytope; print(lib.polytope.DIMENSIONS)"
-./docker.sh exec frontend sh
+./docker.sh exec app python -c "import lib.polytope; print(lib.polytope.DIMENSIONS)"
+./docker.sh exec app sh
 
 # Clean up (removes containers and volumes)
 ./docker.sh clean
 ```
 
-## Production Considerations
-
-1. **Secrets Management**: Use Docker secrets or a vault for production
-2. **CORS**: Set `CORS_ORIGINS` to your production domain
-3. **JWT Secret**: Generate a strong, unique secret
-4. **Passwords**: Change default admin/operator passwords
-5. **Backups**: Ensure MongoDB Atlas backups are configured
-6. **Monitoring**: Set up log aggregation and alerting
-
-## Troubleshooting
-
-### Backend won't start
-```bash
-# Check logs
-./docker.sh logs backend
-
-# Verify environment
-docker-compose exec backend env | grep MONGO
-```
-
-### Frontend shows blank page
-```bash
-# Check build logs
-./docker.sh logs frontend
-
-# Rebuild
-./docker.sh build
-./docker.sh up
-```
-
-### Database connection failed
-```bash
-# Test MongoDB connectivity from backend container
-./docker.sh exec backend bash -c "python -c 'from lib.db import db; print(db.name)'"
-```
-
-### Rate limiting too aggressive
-```bash
-# Check MongoDB connection
-./docker.sh exec backend bash -c "mongo 'MONGO_URL' --eval 'db.adminCommand(\"ping\")'"
-```
-
 ## Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│   Frontend      │────▶│    Backend      │────▶│  MongoDB Atlas  │
-│   (Nginx:80)    │     │  (FastAPI:8001) │     │   (Cloud)       │
-│   Port 3000     │     │                 │     │                 │
-└─────────────────┘     └─────────────────┘     └─────────────────┘
-         │                       │
-         │                       ▼
-         │                 ┌─────────────────┐
-         │                 │   Supabase      │
-         │                 │   (Cloud)       │
-         │                 └─────────────────┘
-         │
-         ▼
-   Browser
+┌─────────────────────────────────────────┐
+│         Single Docker Container         │
+│                                         │
+│  ┌─────────────────────────────────┐   │
+│  │      FastAPI (uvicorn)          │   │
+│  │                                 │   │
+│  │  /              → React UI      │   │
+│  │  /api/*       → API endpoints   │   │
+│  └─────────────────────────────────┘   │
+│                                         │
+│  Static files: ./frontend/dist/       │
+└─────────────────────────────────────────┘
+           ↓
+     Port 8001
+           ↓
+     MongoDB Atlas (Cloud)
 ```
 
 ## Files Created
 
-- `Dockerfile.backend` — Multi-stage Python build
-- `Dockerfile.frontend` — Multi-stage Node.js + Nginx build
-- `docker-compose.yml` — Service orchestration
-- `nginx.conf` — Nginx configuration with API proxy
+- `Dockerfile` — Single container with Python + Node.js
+- `docker-compose.yml` — Single service orchestration
 - `.dockerignore` — Build optimization
 - `docker.sh` — Operations helper script
 - `backend/.env.example` — Environment template
