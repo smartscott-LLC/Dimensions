@@ -65,9 +65,9 @@ export default defineConfig({
     // The /api proxy convention: frontend code calls relative /api/*, never an
     // absolute backend URL. Target is the FastAPI dev server (supervisor: backend).
     proxy: {
-      "/api": {
-        target: "http://localhost:8001",
-        changeOrigin: true,
+          "/api": {
+            target: "https://smarthost.smartscott.dimensional.polytope",
+            changeOrigin: true
       },
     },
   },
